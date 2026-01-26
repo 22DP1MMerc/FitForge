@@ -7,33 +7,33 @@ const user = computed(() => usePage().props.auth.user)
 </script>
 
 <template>
-  <nav class="navbar">
-    <div class="navbar-container">
-      <div class="brand">FitForge</div>
-      <button class="hamburger" @click="isOpen = !isOpen">
-        ☰
-      </button>
+    <nav class="navbar">
+        <div class="navbar-container">
+            <div class="brand">FitForge</div>
+            <button class="hamburger" @click="isOpen = !isOpen">
+                ☰
+            </button>
 
-      <div :class="['nav-links-container', { open: isOpen }]">
-        <ul class="nav-links-center">
-          <li><Link href="/" class="nav-link">Home</Link></li>
-          <li><Link href="/routines" class="nav-link">Routines</Link></li>
-          <li><Link href="/exercises" class="nav-link">Exercises</Link></li>
-        </ul>
+            <div :class="['nav-links-container', { open: isOpen }]">
+                <ul class="nav-links-center">
+                    <li><Link href="/" class="nav-link">Sākums</Link></li>
+                    <li><Link href="/routines" class="nav-link">Rutīnas</Link></li>
+                    <li><Link href="/exercises" class="nav-link">Vingrinājumi</Link></li>
+                </ul>
 
-        <div class="nav-links-right" v-if="user">
-          <button @click="$inertia.post(route('logout'))" class="nav-link logout-button">
-            Log Out
-          </button>
+                <div class="nav-links-right" v-if="user">
+                    <button @click="$inertia.post(route('logout'))" class="nav-link logout-button">
+                        Iziet
+                    </button>
+                </div>
+
+                <ul class="nav-links-right" v-else>
+                    <li><Link href="/login" class="nav-link">Pieteikties</Link></li>
+                    <li><Link href="/register" class="nav-link">Reģistrēties</Link></li>
+                </ul>
+            </div>
         </div>
-
-        <ul class="nav-links-right" v-else>
-          <li><Link href="/login" class="nav-link">Log in</Link></li>
-          <li><Link href="/register" class="nav-link">Sign up</Link></li>
-        </ul>
-      </div>
-    </div>
-  </nav>
+    </nav>
 </template>
 
 <style scoped>

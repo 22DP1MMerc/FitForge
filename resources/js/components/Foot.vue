@@ -1,7 +1,7 @@
 <template>
     <footer>
-      <p>All rights reserved</p>
-      <p>@2024</p>
+      <p>Visas tiesības aizsargātas</p>
+      <p>@202</p>
     </footer>
   </template>
   
