@@ -6,6 +6,7 @@ use App\Models\WorkoutSession;
 use App\Models\Routine;
 use App\Models\Exercise;
 use App\Models\WorkoutLog;
+use App\Models\WorkoutSessionExercise;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
@@ -65,25 +66,87 @@ class WorkoutController extends Controller
 
 
     // Sākt brīvo treniņu
-    public function startFreeWorkout(Request $request)
-    {
-        $user = Auth::user();
-        
-        $request->validate([
-            'name' => 'nullable|string|max:255|default:"Brīvais treniņš"',
-        ]);
-        
-        // Izveido jaunu treniņa sesiju
-        $session = WorkoutSession::create([
+
+// WorkoutController.php
+public function startFreeWorkout(Request $request)
+{
+    $user = auth()->user();
+    
+    // 1. Validācija
+    $validated = $request->validate([
+        'name' => 'required|string|max:255',
+        'routine_id' => 'nullable|exists:routines,id',
+        'exercises' => 'nullable|array', 
+        'exercises.*.id' => 'required|exists:exercises,id',
+        'exercises.*.sets' => 'required|integer|min:1',
+        'exercises.*.reps' => 'required|integer|min:1',
+        'exercises.*.rest_seconds' => 'nullable|integer|min:0',
+        'exercises.*.notes' => 'nullable|string',
+    ]);
+    
+    // 2. Pārbauda un atceļ visus iepriekšējos aktīvos treniņus
+    $activeWorkouts = WorkoutSession::where('user_id', $user->id)
+        ->where('status', 'active')
+        ->get();
+    
+    $cancelledCount = 0;
+    if ($activeWorkouts->count() > 0) {
+        \Log::info('Cancelling previous active workouts for user', [
             'user_id' => $user->id,
-            'name' => $request->name ?? 'Brīvais treniņš',
-            'type' => 'free',
-            'status' => 'active',
-            'started_at' => Carbon::now(),
+            'count' => $activeWorkouts->count()
         ]);
         
-        return redirect()->route('workout.active', $session);
+        foreach ($activeWorkouts as $workout) {
+            $workout->update([
+                'status' => 'cancelled',
+                'ended_at' => now(),
+                'notes' => 'Automātiski atcelts, jo sākts jauns treniņš'
+            ]);
+            $cancelledCount++;
+        }
     }
+    
+    // 3. Izveido jaunu sesiju
+    $session = WorkoutSession::create([
+        'user_id' => $user->id,
+        'routine_id' => $validated['routine_id'] ?? null,
+        'name' => $validated['name'],
+        'status' => 'active',
+        'started_at' => now(),
+    ]);
+    
+    // 4. Pievieno vingrinājumus, ja ir norādīti
+    if (isset($validated['exercises']) && is_array($validated['exercises'])) {
+        foreach ($validated['exercises'] as $exerciseData) {
+            WorkoutSessionExercise::create([
+                'workout_session_id' => $session->id,
+                'exercise_id' => $exerciseData['id'],
+                'sets_planned' => $exerciseData['sets'],
+                'reps_planned' => $exerciseData['reps'],
+                'rest_seconds' => $exerciseData['rest_seconds'] ?? 60,
+                'notes' => $exerciseData['notes'] ?? null,
+            ]);
+        }
+    }
+    
+    // 5. Atjauno localStorage, ja vajag
+    if ($cancelledCount > 0) {
+        \Log::info('Auto-cancelled previous workouts', [
+            'user_id' => $user->id,
+            'cancelled' => $cancelledCount,
+            'new_session_id' => $session->id
+        ]);
+    }
+    
+    return response()->json([
+        'success' => true,
+        'session_id' => $session->id,
+        'message' => $cancelledCount > 0 
+            ? 'Treniņš sākts. ' . $cancelledCount . ' iepriekšējie treniņi atcelti.'
+            : 'Treniņš sākts',
+        'cancelled_previous' => $cancelledCount
+    ]);
+}
     
     // Aktīvā treniņa lapa (GET maršruts)
     public function active(WorkoutSession $workoutSession)
@@ -212,48 +275,59 @@ class WorkoutController extends Controller
     }
     
     // Pabeigt treniņu
-    public function completeWorkout(Request $request, WorkoutSession $workoutSession)
-    {
-        $user = Auth::user();
-        
-        if ($workoutSession->user_id !== $user->id) {
-            abort(403);
-        }
-        
-        $request->validate([
-            'duration_minutes' => 'required|integer|min:1',
-            'calories_burned' => 'nullable|integer|min:0',
-            'notes' => 'nullable|string',
-        ]);
-        
-        // Aprēķina kopējo ilgumu (ja nav norādīts)
-        $durationMinutes = $request->duration_minutes;
-        if (!$durationMinutes) {
-            $durationMinutes = $workoutSession->started_at->diffInMinutes(Carbon::now());
-        }
-        
-        // Atjaunina sesiju
-        $workoutSession->update([
-            'status' => 'completed',
-            'completed_at' => Carbon::now(),
-            'duration_minutes' => $durationMinutes,
-            'calories_burned' => $request->calories_burned,
-            'notes' => $request->notes,
-        ]);
-        
-        // Izveido treniņa logu
-        WorkoutLog::create([
-            'user_id' => $user->id,
-            'routine_id' => $workoutSession->routine_id,
-            'name' => $workoutSession->name,
-            'duration_minutes' => $durationMinutes,
-            'calories_burned' => $request->calories_burned,
-            'notes' => $request->notes,
-            'completed_at' => Carbon::now(),
-        ]);
-        
-        return redirect()->route('dashboard')->with('success', 'Treniņš veiksmīgi pabeigts!');
+    // WorkoutController.php
+public function completeWorkout(Request $request, WorkoutSession $workoutSession)
+{
+    $user = Auth::user();
+    
+    if ($workoutSession->user_id !== $user->id) {
+        abort(403);
     }
+    
+    $request->validate([
+        'duration_minutes' => 'required|integer|min:1',
+        'calories_burned' => 'nullable|integer|min:0',
+        'notes' => 'nullable|string',
+    ]);
+    
+    // 1. Atjaunina sesiju
+    $workoutSession->update([
+        'status' => 'completed',
+        'ended_at' => Carbon::now(),
+        'duration_minutes' => $request->duration_minutes,
+        'calories_burned' => $request->calories_burned,
+        'notes' => $request->notes,
+    ]);
+    
+    // 2. Izveido PILNĪGU WorkoutLog ierakstu
+    $workoutLog = WorkoutLog::create([
+        'user_id' => $user->id,
+        'workout_session_id' => $workoutSession->id, // ✅ Svarīgi!
+        'routine_id' => $workoutSession->routine_id, // ✅ Svarīgi!
+        'name' => $workoutSession->name,
+        'duration_minutes' => $request->duration_minutes,
+        'calories_burned' => $request->calories_burned,
+        'notes' => $request->notes,
+        'completed_at' => $workoutSession->ended_at,
+    ]);
+    
+    // 3. Pārnes vingrinājumus no sesijas uz logu
+    foreach ($workoutSession->exercises as $sessionExercise) {
+        $logExercise = $workoutLog->logExercises()->create([
+            'exercise_id' => $sessionExercise->exercise_id,
+            'sets_completed' => $sessionExercise->sets_completed,
+            'reps_completed' => $sessionExercise->reps_completed ?? [],
+            'weights_used' => $sessionExercise->weights_used ?? [],
+            'notes' => $sessionExercise->notes ?? '',
+        ]);
+    }
+    
+    return response()->json([
+        'success' => true,
+        'message' => 'Treniņš veiksmīgi pabeigts!',
+        'redirect_url' => '/dashboard'
+    ]);
+}
     
     // Atcelt treniņu
     public function cancelWorkout(WorkoutSession $workoutSession)

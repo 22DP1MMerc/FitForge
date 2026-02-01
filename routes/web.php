@@ -7,7 +7,9 @@ use App\Http\Controllers\ExerciseController;
 use App\Http\Controllers\RoutineController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\WorkoutController;
+use App\Http\Controllers\WorkoutLogController;
 use App\Models\Exercise;
+use App\Http\Controllers\Settings\ProfileController;
 
 Route::get('/', function () {
     if (Auth::check()) {
@@ -33,232 +35,173 @@ Route::prefix('api')->group(function () {
 
 // Workout routes
 Route::middleware(['auth'])->group(function () {
-
-Route::get('/workout/free', function () {
-    try {
-        $exercises = \App\Models\Exercise::all()->map(function($exercise) {
-            return [
-                'id' => $exercise->id,
-                'name' => $exercise->name,
-                'muscle_group' => $exercise->muscle_group,
-                'description' => $exercise->description,
-                'equipment' => $exercise->equipment,
-            ];
-        });
-    } catch (\Exception $e) {
-        $exercises = [];
-    }
-    
-    return Inertia::render('Workout/FreeWorkout', [
-        'availableExercises' => $exercises,
-        'initialWorkout' => [
-            'name' => 'Brīvais treniņš - ' . now()->format('d.m.Y'),
-            'exercises' => []
-        ]
-    ]);
-})->name('workout.free');
-
-// API maršruts rutīnas vingrinājumu ielādei
-Route::get('/api/routines/{routine}/exercises', function ($routineId) {
-    try {
-        $routine = \App\Models\Routine::findOrFail($routineId);
-        
-        // Pārbauda, vai rutīna pieder lietotājam vai ir publiska
-        if ($routine->user_id !== auth()->id() && !$routine->is_public) {
-            return response()->json(['error' => 'Nav piekļuves'], 403);
-        }
-        
-        $exercises = $routine->exercises->map(function($exercise) {
-            return [
-                'id' => $exercise->id,
-                'name' => $exercise->name,
-                'muscle_group' => $exercise->muscle_group,
-                'description' => $exercise->description,
-                'sets' => $exercise->pivot->sets ?? 3,
-                'reps' => $exercise->pivot->reps ?? 10,
-                'rest_time' => $exercise->pivot->rest_time ?? 60,
-            ];
-        });
-        
-        return response()->json($exercises);
-        
-    } catch (\Exception $e) {
-        return response()->json(['error' => 'Kļūda: ' . $e->getMessage()], 500);
-    }
-})->middleware('auth');
-
-    // POST brīvā treniņa sākšanai (pagaidu - atgriež ziņojumu)
-Route::post('/workout/start-free', function () {
-    // Simulējam treniņa sākšanu
-    return response()->json([
-        'success' => true,
-        'message' => 'Treniņš veiksmīgi sākts!',
-        'redirect' => false // NEatgriežam redirect
-    ]);
-})->name('workout.start.free');
-    
-    // Workout dashboard (rāda aktīvo treniņu) - vienkārša versija
-    Route::get('/workout', function () {
-        try {
-            $user = Auth::user();
-            
-            // Pārbauda vai ir aktīvs treniņš
-            if (class_exists('App\Models\WorkoutSession')) {
-                $activeWorkout = \App\Models\WorkoutSession::where('user_id', $user->id)
-                    ->where('status', 'active')
-                    ->first();
-                
-                if ($activeWorkout) {
-                    return redirect()->route('workout.active', $activeWorkout);
-                }
-            }
-        } catch (\Exception $e) {
-            // Ignorē kļūdu
-        }
-        
-        return redirect()->route('dashboard');
-    })->name('workout.dashboard');
-    
-  Route::get('/workout/free', function () {
-    try {
-        $exercises = \App\Models\Exercise::all()->map(function($exercise) {
-            return [
-                'id' => $exercise->id,
-                'name' => $exercise->name,
-                'muscle_group' => $exercise->muscle_group,
-                'description' => $exercise->description,
-                'equipment' => $exercise->equipment,
-            ];
-        })->toArray();
-        
-        // Ja sesijā ir izvēlēta rutīna, ielādējam to
-        $routine = null;
-        if (session()->has('selected_routine')) {
-            $routineId = session()->get('selected_routine');
-            $routine = \App\Models\Routine::with('exercises')->find($routineId);
-            session()->forget('selected_routine');
-        }
-        
-        return Inertia::render('Workout/FreeWorkout', [
-            'availableExercises' => $exercises,
-            'initialWorkout' => [
-                'name' => $routine ? $routine->name . ' - ' . now()->format('d.m.Y') : 'Brīvais treniņš - ' . now()->format('d.m.Y'),
-                'exercises' => []
-            ],
-            'routine' => $routine ? [
-                'id' => $routine->id,
-                'name' => $routine->name,
-                'description' => $routine->description,
-                'exercises' => $routine->exercises->map(function($exercise) {
-                    return [
-                        'id' => $exercise->id,
-                        'name' => $exercise->name,
-                        'muscle_group' => $exercise->muscle_group,
-                        'sets' => $exercise->pivot->sets ?? 3,
-                        'reps' => $exercise->pivot->reps ?? 10,
-                        'rest_time' => $exercise->pivot->rest_time ?? 60,
-                    ];
-                })
-            ] : null
+    // POST brīvā treniņa sākšanai
+    Route::post('/workout/start-free', function () {
+        return response()->json([
+            'success' => true,
+            'message' => 'Treniņš veiksmīgi sākts!',
+            'redirect' => false
         ]);
-        
-    } catch (\Exception $e) {
-        \Log::error('Free workout error: ' . $e->getMessage());
-        $exercises = [];
-    }
+    })->name('workout.start.free');
     
-    return Inertia::render('Workout/FreeWorkout', [
-        'availableExercises' => $exercises,
-        'initialWorkout' => [
-            'name' => 'Brīvais treniņš - ' . now()->format('d.m.Y'),
-            'exercises' => []
-        ],
-        'routine' => null
-    ]);
-})->name('workout.free');
-
-// Maršruts rutīnas sākšanai (tikai saglabā rutīnu sesijā)
-Route::get('/workout/start/{routine}', function ($routineId) {
-    try {
-        $routine = \App\Models\Routine::findOrFail($routineId);
-        
-        // Pārbauda, vai rutīna pieder lietotājam vai ir publiska
-        if ($routine->user_id !== auth()->id() && !$routine->is_public) {
-            return redirect()->route('workout.free')->with('error', 'Nav piekļuves šai rutīnai');
-        }
-        
-        // Saglabā izvēlēto rutīnu sesijā
-        session(['selected_routine' => $routine->id]);
-        
-        return redirect()->route('workout.free')->with('success', 'Rutīna ielādēta!');
-        
-    } catch (\Exception $e) {
-        return redirect()->route('workout.free')->with('error', 'Kļūda: ' . $e->getMessage());
-    }
-})->name('workout.start.routine');
-    
-    // Aktīvā treniņa lapa - vienkārša versija
-    Route::get('/workout/{workoutSession}/active', function ($workoutSessionId) {
+    // GET: Brīvais treniņš
+    Route::get('/workout/free', function () {
         try {
-            if (class_exists('App\Models\WorkoutSession')) {
-                $session = \App\Models\WorkoutSession::find($workoutSessionId);
-                
-                if (!$session) {
-                    return redirect()->route('dashboard')->with('error', 'Treniņa sesija nav atrasta');
-                }
-                
-                return Inertia::render('Workout/Active', [
-                    'session' => $session,
-                    'message' => 'Aktīvā treniņa funkcionalitāte tiek izstrādāta'
-                ]);
-            } else {
-                return redirect()->route('dashboard')->with('error', 'WorkoutSession modelis nav pieejams');
-            }
+            $exercises = \App\Models\Exercise::all()->map(function($exercise) {
+                return [
+                    'id' => $exercise->id,
+                    'name' => $exercise->name,
+                    'muscle_group' => $exercise->muscle_group,
+                    'description' => $exercise->description,
+                    'equipment' => $exercise->equipment,
+                ];
+            })->toArray();
+
+            // Pārbaudām, vai jau ir aktīvs treniņš
+            $activeWorkout = \App\Models\WorkoutSession::where('user_id', auth()->id())
+                ->where('status', 'active')
+                ->first();
+
+            return Inertia::render('Workout/FreeWorkout', [
+                'availableExercises' => $exercises,
+                'initialWorkout' => [
+                    'name' => 'Brīvais treniņš - ' . now()->format('d.m.Y'),
+                    'exercises' => []
+                ],
+                'workoutSession' => $activeWorkout ? [
+                    'id' => $activeWorkout->id,
+                    'name' => $activeWorkout->name,
+                    'status' => $activeWorkout->status,
+                    'started_at' => $activeWorkout->started_at->toISOString()
+                ] : null
+            ]);
+
         } catch (\Exception $e) {
-            return redirect()->route('dashboard')->with('error', 'Kļūda: ' . $e->getMessage());
+            \Log::error('Free workout error: ' . $e->getMessage());
+            return Inertia::render('Workout/FreeWorkout', [
+                'availableExercises' => [],
+                'initialWorkout' => [
+                    'name' => 'Brīvais treniņš',
+                    'exercises' => []
+                ],
+                'workoutSession' => null
+            ]);
+        }
+    })->name('workout.free');
+
+    // POST: Sākt brīvo treniņu
+    Route::post('/workout/free/start', [WorkoutController::class, 'startFreeWorkout'])->name('workout.free.start');
+    
+    // POST: Pabeigt treniņu
+    Route::post('/workout/{workoutSession}/complete', [WorkoutController::class, 'completeWorkout'])->name('workout.complete');
+    
+    // POST: Atcelt treniņu
+    Route::post('/workout/{workoutSession}/cancel', [WorkoutController::class, 'cancelWorkout'])->name('workout.cancel');
+    
+    // GET: Aktīvā treniņa lapa
+    Route::get('/workout/{workoutSession}', function ($workoutSessionId) {
+        try {
+            $workoutSession = \App\Models\WorkoutSession::with(['exercises.exercise', 'routine'])
+                ->where('id', $workoutSessionId)
+                ->where('user_id', auth()->id())
+                ->firstOrFail();
+            
+            if ($workoutSession->status !== 'active') {
+                return redirect()->route('dashboard')->with('error', 'Treniņš nav aktīvs');
+            }
+            
+            $exercises = $workoutSession->exercises->map(function($sessionExercise) {
+                return [
+                    'id' => $sessionExercise->exercise_id,
+                    'session_exercise_id' => $sessionExercise->id,
+                    'name' => $sessionExercise->exercise->name,
+                    'muscle_group' => $sessionExercise->exercise->muscle_group,
+                    'sets' => $sessionExercise->sets_planned,
+                    'reps' => $sessionExercise->reps_planned,
+                    'rest_seconds' => $sessionExercise->rest_time ?? 60,
+                    'sets_completed' => $sessionExercise->sets_completed,
+                    'reps_completed' => $sessionExercise->reps_completed ?? [],
+                    'weights_used' => $sessionExercise->weights_used ?? []
+                ];
+            });
+            
+            return Inertia::render('Workout/Active', [
+                'workoutSession' => [
+                    'id' => $workoutSession->id,
+                    'name' => $workoutSession->name,
+                    'type' => $workoutSession->type,
+                    'status' => $workoutSession->status,
+                    'started_at' => $workoutSession->started_at->toISOString()
+                ],
+                'routine' => $workoutSession->routine ? [
+                    'id' => $workoutSession->routine->id,
+                    'name' => $workoutSession->routine->name,
+                    'description' => $workoutSession->routine->description
+                ] : null,
+                'exercises' => $exercises,
+                'started_at' => $workoutSession->started_at->toISOString()
+            ]);
+            
+        } catch (\Exception $e) {
+            \Log::error('Workout active error: ' . $e->getMessage());
+            return redirect()->route('dashboard')->with('error', 'Treniņa sesija nav atrasta');
         }
     })->name('workout.active');
     
-    // Treniņa pabeigšana - vienkārša versija
-    Route::post('/workout/{workoutSession}/complete', function ($workoutSessionId) {
-        try {
-            if (class_exists('App\Models\WorkoutSession')) {
-                $session = \App\Models\WorkoutSession::find($workoutSessionId);
-                
-                if ($session) {
-                    $session->update([
-                        'status' => 'completed',
-                        'completed_at' => now(),
-                    ]);
-                }
-            }
-        } catch (\Exception $e) {
-            // Ignorē kļūdu
-        }
-        
-        return redirect()->route('dashboard')->with('success', 'Treniņš veiksmīgi pabeigts!');
-    })->name('workout.complete');
+    // POST: Pievienot vingrinājumu sesijai
+    Route::post('/workout/{workoutSession}/exercises', [WorkoutController::class, 'addExercise'])->name('workout.add-exercise');
     
-    // Treniņa atcelšana - vienkārša versija
-    Route::post('/workout/{workoutSession}/cancel', function ($workoutSessionId) {
-        try {
-            if (class_exists('App\Models\WorkoutSession')) {
-                $session = \App\Models\WorkoutSession::find($workoutSessionId);
-                
-                if ($session) {
-                    $session->update([
-                        'status' => 'cancelled',
-                        'completed_at' => now(),
-                    ]);
-                }
-            }
-        } catch (\Exception $e) {
-            // Ignorē kļūdu
+    // POST: Atjaunināt setu
+    Route::post('/workout/{workoutSession}/exercises/{exercise}/set', [WorkoutController::class, 'updateSet'])
+        ->name('workout.update-set');
+    
+    // DELETE: Noņemt vingrinājumu
+    Route::delete('/workout/{workoutSession}/exercises/{exercise}', [WorkoutController::class, 'removeExercise'])->name('workout.remove-exercise');
+});
+
+// API workout session
+Route::get('/api/workout-session/{workoutSession}', function ($workoutSessionId) {
+    try {
+        $workoutSession = \App\Models\WorkoutSession::with(['exercises.exercise'])
+            ->where('id', $workoutSessionId)
+            ->where('user_id', auth()->id())
+            ->first();
+        
+        if (!$workoutSession) {
+            return response()->json([
+                'error' => 'Treniņa sesija nav atrasta'
+            ], 404);
         }
         
-        return redirect()->route('dashboard')->with('info', 'Treniņš atcelts');
-    })->name('workout.cancel');
-});
+        return response()->json([
+            'id' => $workoutSession->id,
+            'name' => $workoutSession->name,
+            'status' => $workoutSession->status,
+            'started_at' => $workoutSession->started_at,
+            'duration_minutes' => $workoutSession->duration_minutes,
+            'exercises' => $workoutSession->exercises->map(function($sessionExercise) {
+                return [
+                    'id' => $sessionExercise->exercise_id,
+                    'session_exercise_id' => $sessionExercise->id,
+                    'name' => $sessionExercise->exercise->name,
+                    'muscle_group' => $sessionExercise->exercise->muscle_group,
+                    'sets_planned' => $sessionExercise->sets_planned,
+                    'reps_planned' => $sessionExercise->reps_planned,
+                    'sets_completed' => $sessionExercise->sets_completed,
+                    'reps_completed' => $sessionExercise->reps_completed ?? [],
+                    'weights_used' => $sessionExercise->weights_used ?? [],
+                ];
+            })
+        ]);
+        
+    } catch (\Exception $e) {
+        \Log::error('API workout session error: ' . $e->getMessage());
+        return response()->json([
+            'error' => 'Servera kļūda',
+            'message' => $e->getMessage()
+        ], 500);
+    }
+})->middleware('auth');
 
 // Rutīnu maršruti
 Route::middleware('auth')->group(function () {
@@ -289,6 +232,20 @@ Route::get('/register', function () {
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+});
+
+Route::middleware(['auth'])->group(function () {
+    Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
+    Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+});
+
+Route::middleware(['auth'])->group(function () {
+    Route::prefix('workout-logs')->group(function () {
+        Route::get('/', [WorkoutLogController::class, 'index'])->name('workout-logs.index');
+        Route::get('/{workoutLog}', [WorkoutLogController::class, 'show'])->name('workout-logs.show');
+        Route::delete('/{workoutLog}', [WorkoutLogController::class, 'destroy'])->name('workout-logs.destroy');
+    });
 });
 
 require __DIR__.'/settings.php';

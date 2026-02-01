@@ -1,114 +1,139 @@
-<script setup>
-import { Head, Link, router } from '@inertiajs/vue3';
-import { ref, computed, onMounted } from 'vue';
-import AppLayout from '@/layouts/AppLayout.vue';
+<!--<script setup>
+    import { Head, Link, router } from '@inertiajs/vue3';
+    import { ref, computed, onMounted, onUnmounted } from 'vue';
+    import AppLayout from '@/layouts/AppLayout.vue';
 
-const props = defineProps({
-    routine: Object,
-    exercises: Array,
-    started_at: String
-});
-
-const workoutTime = ref(0); // sekundēs
-const timerInterval = ref(null);
-const isCompleted = ref(false);
-const completedExercises = ref(props.exercises.map(ex => ({
-    ...ex,
-    completed_sets: 0,
-    completed_reps: Array(ex.sets).fill(0),
-    weight_used: null,
-    notes: ''
-})));
-
-// Start timer
-onMounted(() => {
-    timerInterval.value = setInterval(() => {
-        workoutTime.value++;
-    }, 1000);
-});
-
-// Stop timer
-const stopTimer = () => {
-    if (timerInterval.value) {
-        clearInterval(timerInterval.value);
-    }
-};
-
-// Format time
-const formattedTime = computed(() => {
-    const minutes = Math.floor(workoutTime.value / 60);
-    const seconds = workoutTime.value % 60;
-    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-});
-
-// Complete set
-const completeSet = (exerciseIndex, setIndex) => {
-    const exercise = completedExercises.value[exerciseIndex];
-    const reps = prompt(`Cik atkārtojumus izpildījāt ${setIndex + 1}. setā?`, exercise.reps);
-
-    if (reps && !isNaN(reps)) {
-        exercise.completed_reps[setIndex] = parseInt(reps);
-
-        // Ja visi seti pabeigti
-        const allSetsCompleted = exercise.completed_reps.every(rep => rep > 0);
-        if (allSetsCompleted) {
-            exercise.completed_sets = exercise.sets;
+    const props = defineProps({
+        workoutSession: {
+            type: Object,
+            default: () => ({
+                id: null,
+                name: 'Brīvais treniņš',
+                type: 'free',
+                status: 'active',
+                started_at: new Date().toISOString()
+            })
+        },
+        routine: {
+            type: Object,
+            default: () => null
+        },
+        exercises: {
+            type: Array,
+            default: () => []
+        },
+        started_at: {
+            type: String,
+            default: null
         }
-    }
-};
+    });
 
-// Add weight
-const addWeight = (exerciseIndex) => {
-    const weight = prompt('Kādu svaru izmantojāt? (kg)', '');
-    if (weight && !isNaN(weight)) {
-        completedExercises.value[exerciseIndex].weight_used = parseFloat(weight);
-    }
-};
+    const workoutTime = ref(0);
+    const timerInterval = ref(null);
+    const isCompleted = ref(false);
+    const completedExercises = ref((props.exercises || []).map(ex => ({
+        ...ex,
+        completed_sets: ex.sets_completed || 0,
+        completed_reps: ex.reps_completed || Array(ex.sets || 3).fill(0),
+        weight_used: ex.weights_used?.[0] || null,
+        notes: ''
+    })));
 
-// Complete workout
-const completeWorkout = () => {
-    if (confirm('Vai tiešām vēlaties pabeigt treniņu?')) {
-        stopTimer();
+    const workoutName = computed(() => {
+        return props.routine?.name || props.workoutSession?.name || 'Brīvais treniņš';
+    });
 
-        const durationMinutes = Math.ceil(workoutTime.value / 60);
+    const routineId = computed(() => {
+        return props.routine?.id || null;
+    });
 
-        router.post(route('workout.complete', {
-            workoutLog: props.routine.id
-        }), {
-            duration_minutes: durationMinutes,
-            exercises: completedExercises.value,
-            notes: ''
-        }, {
-            onSuccess: () => {
-                isCompleted.value = true;
-                alert('Treniņš veiksmīgi pabeigts!');
-                router.visit('/dashboard');
+    onMounted(() => {
+        timerInterval.value = setInterval(() => {
+            workoutTime.value++;
+        }, 1000);
+    });
+
+    const stopTimer = () => {
+        if (timerInterval.value) {
+            clearInterval(timerInterval.value);
+            timerInterval.value = null;
+        }
+    };
+
+    const formattedTime = computed(() => {
+        const minutes = Math.floor(workoutTime.value / 60);
+        const seconds = workoutTime.value % 60;
+        return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    });
+
+    const completeSet = (exerciseIndex, setIndex) => {
+        const exercise = completedExercises.value[exerciseIndex];
+        const defaultReps = exercise.reps || 10;
+        const reps = prompt(`Cik atkārtojumus izpildījāt ${setIndex + 1}. setā?`, defaultReps);
+
+        if (reps && !isNaN(reps)) {
+            exercise.completed_reps[setIndex] = parseInt(reps);
+            const allSetsCompleted = exercise.completed_reps.every(rep => rep > 0);
+            if (allSetsCompleted) {
+                exercise.completed_sets = exercise.sets || 3;
             }
-        });
-    }
-};
+        }
+    };
 
-// Cancel workout
-const cancelWorkout = () => {
-    if (confirm('Vai tiešām vēlaties atcelt treniņu?')) {
-        stopTimer();
-        router.visit('/dashboard');
-    }
-};
+    const addWeight = (exerciseIndex) => {
+        const weight = prompt('Kādu svaru izmantojāt? (kg)', '');
+        if (weight && !isNaN(weight)) {
+            completedExercises.value[exerciseIndex].weight_used = parseFloat(weight);
+        }
+    };
 
-// Cleanup on unmount
-onBeforeUnmount(() => {
-    stopTimer();
-});
+    const completeWorkout = () => {
+        if (confirm('Vai tiešām vēlaties pabeigt treniņu?')) {
+            stopTimer();
+            const durationMinutes = Math.ceil(workoutTime.value / 60);
+
+            const routeName = routineId.value ? 'workout.complete' : 'workout.free.complete';
+
+            router.post(route(routeName, {
+                workoutLog: routineId.value || 'free'
+            }), {
+                duration_minutes: durationMinutes,
+                exercises: completedExercises.value,
+                notes: ''
+            }, {
+                onSuccess: () => {
+                    isCompleted.value = true;
+                    alert('Treniņš veiksmīgi pabeigts!');
+                    router.visit('/dashboard');
+                },
+                onError: (errors) => {
+                    alert('Kļūda saglabājot treniņu: ' + (errors.message || 'Nezināma kļūda'));
+                }
+            });
+        }
+    };
+
+    const cancelWorkout = () => {
+        if (confirm('Vai tiešām vēlaties atcelt treniņu?')) {
+            stopTimer();
+            router.visit('/dashboard');
+        }
+    };
+
+    onUnmounted(() => {
+        if (timerInterval.value) {
+            clearInterval(timerInterval.value);
+        }
+    });
 </script>
 
 <template>
-    <Head :title="`Treniņš: ${routine.name}`" />
+    <Head :title="`Treniņš: ${workoutName}`" />
 
     <AppLayout>
         <div class="workout-container">
             <div class="workout-header">
-                <h1>{{ routine.name }}</h1>
+                <h1>{{ workoutName }}</h1>
                 <div class="workout-timer">
                     <span class="timer-label">Laiks:</span>
                     <span class="timer-value">{{ formattedTime }}</span>
@@ -121,20 +146,20 @@ onBeforeUnmount(() => {
             <div class="workout-content">
                 <div class="exercises-list">
                     <div v-for="(exercise, exIndex) in completedExercises"
-                         :key="exercise.id"
+                         :key="exercise.id || exIndex"
                          class="exercise-card">
                         <div class="exercise-header">
                             <h3>{{ exercise.name }}</h3>
                             <div class="exercise-info">
-                                <span>{{ exercise.sets }} × {{ exercise.reps }}</span>
+                                <span>{{ exercise.sets || 3 }} × {{ exercise.reps || 10 }}</span>
                                 <span v-if="exercise.rest_seconds">
-                                    Atpūta: {{ Math.floor(exercise.rest_seconds / 60) }}min
+                                    Atpūta: {{ Math.floor((exercise.rest_seconds || 60) / 60) }}min
                                 </span>
                             </div>
                         </div>
 
                         <div class="sets-container">
-                            <div v-for="(set, setIndex) in Array.from({length: exercise.sets})"
+                            <div v-for="(set, setIndex) in Array.from({length: exercise.sets || 3})"
                                  :key="setIndex"
                                  class="set-item"
                                  :class="{ 'completed': exercise.completed_reps[setIndex] > 0 }">
@@ -143,7 +168,7 @@ onBeforeUnmount(() => {
                                         class="set-btn"
                                         :disabled="exercise.completed_reps[setIndex] > 0">
                                     {{
- exercise.completed_reps[setIndex] > 0
+                                        exercise.completed_reps[setIndex] > 0
                                         ? exercise.completed_reps[setIndex] + ' reps'
                                         : 'Pabeigt'
                                     }}
@@ -172,7 +197,7 @@ onBeforeUnmount(() => {
                         </div>
                         <div class="stat-item">
                             <span>Pabeigtie vingrinājumi:</span>
-                            <span>{{ completedExercises.filter(e => e.completed_sets === e.sets).length }}/{{ completedExercises.length }}</span>
+                            <span>{{ completedExercises.filter(e => e.completed_sets === (e.sets || 3)).length }}/{{ completedExercises.length }}</span>
                         </div>
                         <div class="stat-item">
                             <span>Kopējie seti:</span>
@@ -184,8 +209,11 @@ onBeforeUnmount(() => {
                         <button @click="cancelWorkout" class="cancel-btn">
                             Atcelt treniņu
                         </button>
-                        <Link :href="route('routines.show', routine.id)" class="view-routine-btn">
+                        <Link v-if="routineId" :href="route('routines.show', routineId)" class="view-routine-btn">
                         Skatīt rutīnu
+                        </Link>
+                        <Link v-else :href="route('dashboard')" class="view-routine-btn">
+                        Atgriezties uz sākumlapu
                         </Link>
                     </div>
                 </div>
@@ -448,4 +476,4 @@ onBeforeUnmount(() => {
         .view-routine-btn:hover {
             background: #e5e7eb;
         }
-</style>
+</style>-->

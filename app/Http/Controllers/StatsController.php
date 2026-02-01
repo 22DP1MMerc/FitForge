@@ -54,36 +54,56 @@ class StatsController extends Controller
         ]);
     }
     
-    private function calculateCurrentStreak($user)
-    {
-        // Atrodam pēdējās 30 dienas ar treniņiem
-        $workoutDays = WorkoutLog::where('user_id', $user->id)
-            ->where('completed_at', '>=', now()->subDays(30))
-            ->orderBy('completed_at', 'desc')
-            ->pluck('completed_at')
-            ->map(function($date) {
-                return $date->format('Y-m-d');
-            })
-            ->unique()
-            ->values()
-            ->toArray();
+    
+public function calculateWeeklyStreak($userId)
+{
+    $user = User::find($userId);
+    
+    // Iegūst visas pabeigtās sesijas
+    $completedSessions = WorkoutSession::where('user_id', $userId)
+        ->where('status', 'completed')
+        ->whereNotNull('ended_at')
+        ->orderBy('ended_at', 'desc')
+        ->get();
+
+    $currentStreak = 0;
+    $lastWeekChecked = null;
+    
+    // Grupē sesijas pa nedēļām
+    $weeklySessions = $completedSessions->groupBy(function ($session) {
+        return $session->ended_at->startOfWeek()->format('Y-W');
+    });
+
+    // Pārbauda katru nedēļu secīgi
+    foreach ($weeklySessions as $week => $sessions) {
+        $weekStart = Carbon::createFromFormat('Y-W', $week)->startOfWeek();
         
-        // Aprēķinām sēriju
-        $streak = 0;
-        $currentDate = now()->format('Y-m-d');
+        // Pārbauda vai šajā nedēļā bija vismaz 1 treniņš
+        $hasWorkout = $sessions->count() > 0;
         
-        foreach ($workoutDays as $i => $workoutDay) {
-            if ($workoutDay == $currentDate || 
-                ($i == 0 && $workoutDay == now()->subDay()->format('Y-m-d'))) {
-                $streak++;
-                $currentDate = date('Y-m-d', strtotime($currentDate . ' -1 day'));
+        // Ja pirmā pārbaudāmā nedēļa un tai ir treniņš, sākam streak
+        if ($lastWeekChecked === null && $hasWorkout) {
+            $currentStreak = 1;
+            $lastWeekChecked = $weekStart;
+            continue;
+        }
+        
+        // Ja ir iepriekšējā nedēļa, pārbauda vai tā ir tieši pirms šīs nedēļas
+        if ($lastWeekChecked && $hasWorkout) {
+            $expectedPreviousWeek = $weekStart->copy()->subWeek();
+            
+            if ($lastWeekChecked->equalTo($expectedPreviousWeek)) {
+                $currentStreak++;
+                $lastWeekChecked = $weekStart;
             } else {
+                // Streak pārtraukts
                 break;
             }
         }
-        
-        return $streak;
     }
+
+    return $currentStreak;
+}
     
     private function calculateTotalCalories($user)
     {

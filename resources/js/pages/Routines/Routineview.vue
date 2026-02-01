@@ -21,7 +21,7 @@
                                 <h3>🏋️ Aktīvā rutīna</h3>
                                 <h4>{{ activeRoutine.name }}</h4>
                                 <div class="routine-details">
-                                    <span class="exercise-count">{{ activeRoutine.exercises_count || 0 }} vingrinājumi</span>
+                                    <span class="exercise-count">{{ getTotalExercisesCount(activeRoutine) }} vingrinājumi</span>
                                     <span v-if="activeRoutine.is_public" class="public-tag">Publiska</span>
                                 </div>
                             </div>
@@ -44,8 +44,11 @@
                                     </div>
                                     <p class="routine-description">{{ routine.description || 'Nav apraksta' }}</p>
 
+                                    <!-- Nedēļas dienu pārskats -->
+                                
+
                                     <div class="routine-meta">
-                                        <span class="exercise-count">{{ routine.exercises.length }} vingrinājumi</span>
+                                        <span class="exercise-count">{{ getTotalExercisesCount(routine) }} vingrinājumi</span>
                                         <span v-if="routine.is_public" class="public-tag">Publiska</span>
                                     </div>
 
@@ -99,7 +102,7 @@
                             <div class="info-grid">
                                 <div class="info-item">
                                     <span class="info-label">Vingrinājumi:</span>
-                                    <span class="info-value">{{ selectedRoutine.exercises.length }}</span>
+                                    <span class="info-value">{{ getTotalExercisesCount(selectedRoutine) }}</span>
                                 </div>
                                 <div class="info-item">
                                     <span class="info-label">Statuss:</span>
@@ -115,46 +118,57 @@
                         </div>
 
                         <div class="modal-section">
-                            <h3>💪 Vingrinājumi ({{ selectedRoutine.exercises.length }})</h3>
-                            <div v-if="selectedRoutine.exercises.length > 0" class="exercises-list">
-                                <div v-for="(exercise, index) in selectedRoutine.exercises"
-                                     :key="exercise.id || index"
-                                     class="exercise-card">
-                                    <div class="exercise-header">
-                                        <div class="exercise-number">{{ index + 1 }}</div>
-                                        <div class="exercise-title">
-                                            <h4>{{ exercise.name }}</h4>
-                                            <span class="muscle-badge">{{ exercise.muscle_group }}</span>
-                                        </div>
+                            <h3>🗓️ Nedēļas grafiks</h3>
+                            <div class="week-schedule-detailed">
+                                <div v-for="day in 7" :key="day" class="day-plan">
+                                    <div class="day-header">
+                                        <h4>{{ getDayName(day) }}</h4>
+                                        <span class="day-count">
+                                            {{ getExercisesCountForDay(selectedRoutine, day) }} vingrinājumi
+                                        </span>
                                     </div>
 
-                                    <div class="exercise-specs">
-                                        <div class="spec-item">
-                                            <span class="spec-label">Seti:</span>
-                                            <span class="spec-value">{{ exercise.pivot?.sets || 3 }}</span>
-                                        </div>
-                                        <div class="spec-item">
-                                            <span class="spec-label">Reps:</span>
-                                            <span class="spec-value">{{ exercise.pivot?.reps || 10 }}</span>
-                                        </div>
-                                        <div v-if="exercise.pivot?.weight" class="spec-item">
-                                            <span class="spec-label">Svars:</span>
-                                            <span class="spec-value">{{ exercise.pivot.weight }}kg</span>
-                                        </div>
-                                        <div v-if="exercise.pivot?.rest_time" class="spec-item">
-                                            <span class="spec-label">Atpūta:</span>
-                                            <span class="spec-value">{{ exercise.pivot.rest_time }}s</span>
+                                    <div v-if="getExercisesForDay(selectedRoutine, day).length > 0" class="exercises-list">
+                                        <div v-for="exercise in getExercisesForDay(selectedRoutine, day)"
+                                             :key="exercise.id || exercise.name"
+                                             class="exercise-card">
+                                            <div class="exercise-header">
+                                                <div class="exercise-title">
+                                                    <h5>{{ exercise.name }}</h5>
+                                                    <span class="muscle-badge">{{ exercise.muscle_group }}</span>
+                                                </div>
+                                            </div>
+
+                                            <div class="exercise-specs">
+                                                <div class="spec-item">
+                                                    <span class="spec-label">Seti:</span>
+                                                    <span class="spec-value">{{ exercise.sets || exercise.pivot?.sets || 3 }}</span>
+                                                </div>
+                                                <div class="spec-item">
+                                                    <span class="spec-label">Reps:</span>
+                                                    <span class="spec-value">{{ exercise.reps || exercise.pivot?.reps || 10 }}</span>
+                                                </div>
+                                                <div v-if="exercise.weight || (exercise.pivot && exercise.pivot.weight)" class="spec-item">
+                                                    <span class="spec-label">Svars:</span>
+                                                    <span class="spec-value">{{ exercise.weight || (exercise.pivot && exercise.pivot.weight) }}kg</span>
+                                                </div>
+
+                                                <div v-if="exercise.rest_time || (exercise.pivot && exercise.pivot.rest_time)" class="spec-item">
+                                                    <span class="spec-label">Atpūta:</span>
+                                                    <span class="spec-value">{{ exercise.rest_time || (exercise.pivot && exercise.pivot.rest_time) }}s</span>
+                                                </div>
+                                            </div>
+
+                                            <div v-if="exercise.notes || exercise.pivot?.notes" class="exercise-notes">
+                                                <span class="notes-label">Piezīmes:</span>
+                                                <p>{{ exercise.notes || exercise.pivot?.notes }}</p>
+                                            </div>
                                         </div>
                                     </div>
-
-                                    <div v-if="exercise.pivot?.notes" class="exercise-notes">
-                                        <span class="notes-label">Piezīmes:</span>
-                                        <p>{{ exercise.pivot.notes }}</p>
+                                    <div v-else class="rest-day">
+                                        🛌 Atpūtas diena
                                     </div>
                                 </div>
-                            </div>
-                            <div v-else class="no-exercises">
-                                🏋️ Šai rutīnai vēl nav vingrinājumu
                             </div>
                         </div>
                     </div>
@@ -181,6 +195,7 @@
     import AppLayout from '@/Layouts/AppLayout.vue';
     import { Head, Link, router } from '@inertiajs/vue3';
     import { ref, onMounted, onUnmounted } from 'vue';
+    import axios from 'axios';
 
     const props = defineProps({
         routines: Array,
@@ -189,10 +204,58 @@
     const activeRoutine = ref(null);
     const selectedRoutine = ref(null);
 
+    const dayNames = {
+        1: 'Pirmdiena',
+        2: 'Otrdiena',
+        3: 'Trešdiena',
+        4: 'Ceturtdiena',
+        5: 'Piektdiena',
+        6: 'Sestdiena',
+        7: 'Svētdiena'
+    };
+
+    // Palīgfunkcijas
+    const getDayName = (dayNumber) => {
+        return dayNames[dayNumber] || `Diena ${dayNumber}`;
+    };
+
+    const getExercisesCountForDay = (routine, dayNumber) => {
+        if (!routine.exercises) return 0;
+
+        return routine.exercises.filter(exercise => {
+            return exercise.pivot?.day_number === dayNumber;
+        }).length;
+    };
+
+    const getExercisesForDay = (routine, dayNumber) => {
+        if (!routine.exercises) return [];
+
+        return routine.exercises.filter(exercise => {
+            return exercise.pivot?.day_number === dayNumber;
+        });
+    };
+
+    const getTotalExercisesCount = (routine) => {
+        if (!routine.exercises) return 0;
+
+        // Grupē pēc dienām un saskaita unikālos vingrinājumus
+        const uniqueExerciseIds = new Set();
+        routine.exercises.forEach(exercise => {
+            uniqueExerciseIds.add(exercise.id);
+        });
+
+        return uniqueExerciseIds.size;
+    };
+
     onMounted(() => {
         const saved = localStorage.getItem('activeRoutine');
         if (saved) {
-            activeRoutine.value = JSON.parse(saved);
+            try {
+                activeRoutine.value = JSON.parse(saved);
+            } catch (e) {
+                console.error('Error parsing active routine:', e);
+                localStorage.removeItem('activeRoutine');
+            }
         }
 
         document.addEventListener('keydown', handleEscape);
@@ -202,31 +265,59 @@
         document.removeEventListener('keydown', handleEscape);
     });
 
-    const setAsActiveRoutine = (routine) => {
-        const data = {
-            id: routine.id,
-            name: routine.name,
-            description: routine.description,
-            exercises_count: routine.exercises.length,
-            is_public: routine.is_public,
-            exercises: routine.exercises.map(ex => ({
-                id: ex.id,
-                name: ex.name,
-                muscle_group: ex.muscle_group,
-                sets: ex.pivot?.sets || 3,
-                reps: ex.pivot?.reps || 10,
-                weight: ex.pivot?.weight || 0,
-                rest_time: ex.pivot?.rest_time || 60,
-                notes: ex.pivot?.notes || ''
-            }))
-        };
+    // MyRoutines.vue - setAsActiveRoutine funkcijā
+    const setAsActiveRoutine = async (routine) => {
+        try {
+            console.log('Setting active routine:', routine.id, routine.name);
 
-        localStorage.setItem('activeRoutine', JSON.stringify(data));
-        activeRoutine.value = data;
-        localStorage.setItem('routineChanged', 'true');
+            // 1. Mēģinām saglabāt serverī
+            const response = await axios.post(`/routines/${routine.id}/set-active`);
+            console.log('Server response:', response.data);
 
-        if (selectedRoutine.value?.id === routine.id) {
-            closeModal();
+            // 2. Iegūstam pilnus rutīnas datus
+            let routineData;
+            if (response.data && response.data.routine) {
+                // Izmantojam servera atbildi
+                routineData = response.data.routine;
+            } else {
+                // Ja serveris neatgriež datus, izmantojam lokālos
+                routineData = {
+                    id: routine.id,
+                    name: routine.name,
+                    description: routine.description || '',
+                    is_public: routine.is_public || false,
+                    exercises_count: routine.exercises?.length || 0,
+                    exercises: (routine.exercises || []).map(ex => ({
+                        id: ex.id,
+                        name: ex.name,
+                        muscle_group: ex.muscle_group || '',
+                        sets: (ex.pivot && ex.pivot.sets) || 3,
+                        reps: (ex.pivot && ex.pivot.reps) || 10,
+                        rest_seconds: (ex.pivot && ex.pivot.rest_seconds) || 60,
+                        day_number: (ex.pivot && ex.pivot.day_number) || 1,
+                        notes: (ex.pivot && ex.pivot.notes) || ''
+                    }))
+                };
+            }
+
+            console.log('Saving to localStorage:', routineData);
+            localStorage.setItem('activeRoutine', JSON.stringify(routineData));
+            activeRoutine.value = routineData;
+
+            // 3. Paziņojam par izmaiņām
+            localStorage.setItem('routineChanged', 'true');
+
+            // 4. Parādām veiksmes ziņojumu
+            alert(`✅ Rutīna "${routine.name}" iestatīta kā aktīvā!`);
+
+            // 5. Aizveram modālu, ja atvērts
+            if (selectedRoutine.value?.id === routine.id) {
+                closeModal();
+            }
+
+        } catch (error) {
+            console.error('Full error details:', error);
+            // ... error handling ...
         }
     };
 
@@ -246,32 +337,77 @@
         document.body.style.overflow = 'auto';
     };
 
-    const startRoutineWorkout = (routine) => {
-        const data = {
-            id: routine.id,
-            name: routine.name,
-            exercises: routine.exercises.map(ex => ({
-                id: ex.id,
-                name: ex.name,
-                muscle_group: ex.muscle_group,
-                sets: ex.pivot?.sets || 3,
-                reps: ex.pivot?.reps || 10,
-                weight: ex.pivot?.weight || 0,
-                rest_time: ex.pivot?.rest_time || 60,
-                notes: ex.pivot?.notes || ''
-            }))
-        };
+    const startRoutineWorkout = async (routine) => {
+        try {
+            // 1. Nosakām šodienas dienas numuru
+            const today = new Date();
+            const dayNumber = today.getDay(); // 0-6
+            let todayDayNumber = dayNumber === 0 ? 7 : dayNumber;
 
-        localStorage.setItem('activeRoutineForWorkout', JSON.stringify(data));
+            // 2. Filtrējam vingrinājumus šodienai
+            const exercisesForToday = (routine.exercises || [])
+                .filter(exercise => {
+                    const exerciseDay = exercise.pivot?.day_number || exercise.day_number || 1;
+                    return exerciseDay === todayDayNumber;
+                })
+                .map(exercise => ({
+                    id: exercise.id,
+                    name: exercise.name,
+                    muscle_group: exercise.muscle_group || '',
+                    sets: exercise.pivot?.sets || exercise.sets || 3,
+                    reps: exercise.pivot?.reps || exercise.reps || 10,
+                    rest_seconds: exercise.pivot?.rest_seconds || exercise.rest_seconds || 60,
+                    notes: exercise.pivot?.notes || exercise.notes || '',
+                    day_number: exercise.pivot?.day_number || exercise.day_number || 1
+                }));
 
-        router.visit('/workout/free', {
-            method: 'get',
-            data: {
-                routine_id: routine.id,
-                routine_name: routine.name
+            console.log('Starting routine workout:', {
+                routineId: routine.id,
+                routineName: routine.name,
+                todayDayNumber: todayDayNumber,
+                exercisesCount: exercisesForToday.length
+            });
+
+            if (exercisesForToday.length === 0) {
+                const dayNames = ['Svētdiena', 'Pirmdiena', 'Otrdiena', 'Trešdiena', 'Ceturtdiena', 'Piektdiena', 'Sestdiena'];
+                alert(`Šodien (${dayNames[todayDayNumber]}) nav vingrinājumu rutīnā "${routine.name}".`);
+                return;
             }
-        });
+
+            // 3. Izveidojam brīvo treniņu
+            const response = await axios.post('/workout/free/start', {
+                name: routine.name + ' - ' + new Date().toLocaleDateString('lv-LV'),
+                routine_id: routine.id,
+                exercises: exercisesForToday
+            });
+
+            if (response.data && response.data.success) {
+                if (response.data.session_id) {
+                    router.visit(`/workout/free?session=${response.data.session_id}`);
+                } else {
+                    router.visit('/workout/free');
+                }
+            } else {
+                throw new Error(response.data?.message || 'Unknown error');
+            }
+
+        } catch (error) {
+            console.error('Error starting routine workout:', error);
+
+            let errorMessage = 'Kļūda sākot treniņu: ';
+            if (error.response?.data?.message) {
+                errorMessage += error.response.data.message;
+            } else if (error.message) {
+                errorMessage += error.message;
+            }
+
+            alert(errorMessage);
+        }
     };
+
+
+        
+    
 
     const handleEscape = (e) => {
         if (e.key === 'Escape' && selectedRoutine.value) {
@@ -281,6 +417,146 @@
 </script>
 
 <style scoped>
+
+    .week-schedule {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 0.25rem;
+        margin-bottom: 1rem;
+        background: #f8fafc;
+        border-radius: 0.5rem;
+        padding: 0.5rem;
+        border: 1px solid #e2e8f0;
+    }
+
+    .day-summary {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 0.25rem;
+        border-radius: 0.375rem;
+        background: white;
+        font-size: 0.75rem;
+    }
+
+    .day-name {
+        color: #64748b;
+        font-weight: 500;
+        margin-bottom: 0.125rem;
+    }
+
+    .day-exercises {
+        background: #3b82f6;
+        color: white;
+        width: 1.5rem;
+        height: 1.5rem;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        font-size: 0.625rem;
+    }
+
+    .week-schedule-detailed {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+
+    .day-plan {
+        background: #f8fafc;
+        border-radius: 0.75rem;
+        padding: 1.25rem;
+        border: 1px solid #e2e8f0;
+    }
+
+    .day-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+        .day-header h4 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #1e293b;
+            margin: 0;
+        }
+
+    .day-count {
+        background: #3b82f6;
+        color: white;
+        padding: 0.25rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .exercises-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .rest-day {
+        text-align: center;
+        padding: 1.5rem;
+        color: #94a3b8;
+        font-style: italic;
+        background: white;
+        border-radius: 0.5rem;
+        border: 1px dashed #e2e8f0;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+        .week-schedule {
+            grid-template-columns: repeat(4, 1fr);
+        }
+
+        .routine-content {
+            padding: 1rem;
+        }
+
+        .routine-description {
+            font-size: 0.875rem;
+        }
+
+        .day-name {
+            font-size: 0.625rem;
+        }
+
+        .day-exercises {
+            width: 1.25rem;
+            height: 1.25rem;
+            font-size: 0.5rem;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .week-schedule {
+            grid-template-columns: repeat(3, 1fr);
+        }
+
+        .day-plan {
+            padding: 1rem;
+        }
+
+        .day-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+
+        .day-count {
+            align-self: flex-start;
+        }
+    }
+
     /* Base Styles */
     .routines-page {
         padding: 2rem 1rem;

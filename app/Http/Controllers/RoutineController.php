@@ -146,6 +146,64 @@ class RoutineController extends Controller
             
         return Inertia::render('Routines/MyRoutines', [
             'routines' => $routines
-        ]);
+        ]);}
+
+        public function getRoutine(Routine $routine)
+{
+    $user = auth()->user();
+    
+    // Pārbauda piekļuvi
+    if ($routine->user_id !== $user->id && !$routine->is_public) {
+        return response()->json(['error' => 'Unauthorized'], 403);
     }
+    
+    $routine->load(['exercises' => function($query) {
+        $query->withPivot(['day_number', 'sets', 'reps', 'rest_seconds', 'notes']);
+    }]);
+    
+    return response()->json($routine);
 }
+
+public function setActive(Routine $routine)
+{
+    $user = auth()->user();
+    
+    if (!$user) {
+        return response()->json(['error' => 'Nav autentificēts'], 401);
+    }
+    
+    // DEBUG logs
+    \Log::info('Setting active routine', [
+        'routine_id' => $routine->id,
+        'routine_name' => $routine->name,
+        'routine_owner_id' => $routine->user_id,
+        'routine_is_public' => $routine->is_public,
+        'current_user_id' => $user->id,
+        'is_same_user' => $routine->user_id === $user->id
+    ]);
+    
+    // Atļaujam, ja:
+    // 1. Rutīna pieder lietotājam VAI
+    // 2. Rutīna ir publiska
+    if ($routine->user_id !== $user->id && !$routine->is_public) {
+        return response()->json([
+            'success' => false,
+            'error' => 'Nav pieejas šai rutīnai'
+        ], 403);
+    }
+    
+    // Saglabā aktīvo rutīnu sesijā
+    session(['activeRoutine' => $routine->id]);
+    
+    // Iegūst rutīnas datus ar vingrinājumiem
+    $routine->load(['exercises' => function($query) {
+        $query->withPivot(['day_number', 'sets', 'reps', 'rest_seconds', 'notes']);
+    }]);
+    
+    return response()->json([
+        'success' => true,
+        'message' => 'Rutīna iestatīta kā aktīvā',
+        'routine' => $routine
+    ]);
+}
+    }

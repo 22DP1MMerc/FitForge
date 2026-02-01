@@ -1,7 +1,7 @@
 <template>
     <footer>
       <p>Visas tiesības aizsargātas</p>
-      <p>@202</p>
+      <p>@2026</p>
     </footer>
   </template>
   

@@ -70,6 +70,84 @@ Route::middleware('auth:sanctum')->group(function () {
             'message' => 'Workout started successfully'
         ]);
     });
+
+     Route::post('/workout-session/{id}/complete', function ($id) {
+        try {
+            $workoutSession = \App\Models\WorkoutSession::with('exercises')
+                ->where('id', $id)
+                ->where('user_id', auth()->id())
+                ->firstOrFail();
+            
+            // Validācija
+            $data = request()->validate([
+                'duration_minutes' => 'required|integer|min:1',
+                'calories_burned' => 'nullable|integer|min:0',
+                'notes' => 'nullable|string'
+            ]);
+            
+            // Pārbauda, vai sesija ir aktīva
+            if ($workoutSession->status !== 'active') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Treniņš jau ir pabeigts vai atcelts'
+                ], 400);
+            }
+            
+            // Atjaunina sesiju
+            $workoutSession->update([
+                'status' => 'completed',
+                'ended_at' => now(),
+                'duration_minutes' => $data['duration_minutes'],
+                'calories_burned' => $data['calories_burned'] ?? 0,
+                'notes' => $data['notes'] ?? null
+            ]);
+            
+            // Izveido treniņa logu
+            $workoutLog = \App\Models\WorkoutLog::create([
+                'user_id' => auth()->id(),
+                'routine_id' => $workoutSession->routine_id,
+                'name' => $workoutSession->name,
+                'duration_minutes' => $data['duration_minutes'],
+                'calories_burned' => $data['calories_burned'] ?? 0,
+                'notes' => $data['notes'] ?? null,
+                'completed_at' => now()
+            ]);
+            
+            // Pārnes vingrinājumus no sesijas uz logu
+            foreach ($workoutSession->exercises as $sessionExercise) {
+                if ($sessionExercise->sets_completed > 0) {
+                    $workoutLog->exercises()->attach($sessionExercise->exercise_id, [
+                        'sets_completed' => $sessionExercise->sets_completed,
+                        'reps_completed' => !empty($sessionExercise->reps_completed) 
+                            ? array_sum($sessionExercise->reps_completed) 
+                            : 0,
+                        'weight_used' => !empty($sessionExercise->weights_used)
+                            ? array_sum($sessionExercise->weights_used) / count($sessionExercise->weights_used)
+                            : 0
+                    ]);
+                }
+            }
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Treniņš veiksmīgi pabeigts!',
+                'workout_log_id' => $workoutLog->id
+            ]);
+            
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Treniņa sesija nav atrasta'
+            ], 404);
+        } catch (\Exception $e) {
+            \Log::error('Complete workout session error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Servera kļūda: ' . $e->getMessage()
+            ], 500);
+        }
+    });
+});
     
  Route::post('/workouts/{workoutLog}/complete', function ($workoutLogId) {
         $workoutLog = \App\Models\WorkoutLog::findOrFail($workoutLogId);
@@ -102,4 +180,8 @@ Route::middleware('auth:sanctum')->group(function () {
             'message' => 'Workout completed successfully!'
         ]);
     });
-});
+
+Route::post('/routines/{routine}/set-active', [RoutineController::class, 'setActive']);
+
+Route::get('/api/routines/{routine}', [RoutineController::class, 'getRoutine']);
+

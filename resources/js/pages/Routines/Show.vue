@@ -1,6 +1,6 @@
 <script setup>
     import TextLink from '@/components/TextLink.vue';
-    import { Head } from '@inertiajs/vue3';
+    import { Head, Link } from '@inertiajs/vue3';
     import { computed } from 'vue';
 
     const props = defineProps({
@@ -26,10 +26,10 @@
 
         <div class="routine-container">
             <div class="routine-content">
-                <TextLink :href="route('routines')"
-                          class="close-button">
-                    ×
-                </TextLink>
+                <Link :href="route('routines.index')"
+                      class="close-button">
+                ×
+                </Link>
 
                 <h1>{{ safeRoutine.name }}</h1>
                 <p class="routine-description">{{ safeRoutine.description }}</p>

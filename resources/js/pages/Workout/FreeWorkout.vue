@@ -1,4 +1,534 @@
-<!-- freeworkout.vue -->
+<script setup lang="ts">
+    import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+    import { router, usePage } from '@inertiajs/vue3';
+    import AppLayout from '@/Layouts/AppLayout.vue';
+    import axios from 'axios';
+
+    const page = usePage();
+
+    // ========== PROPS DEFINĒŠANA ==========
+    const props = defineProps({
+        availableExercises: {
+            type: Array,
+            default: () => []
+        },
+        initialWorkout: {
+            type: Object,
+            default: () => ({})
+        },
+        workoutSession: {
+            type: Object,
+            default: null
+        }
+    });
+
+    // ========== REAKTĪVIE MAINĪGIE ==========
+    // Hronometra stāvokļi
+    const timer = ref(0);
+    const timerRunning = ref(false);
+    let timerInterval: NodeJS.Timeout | null = null;
+
+    // Treniņa dati
+    const workoutName = ref(props.initialWorkout?.name || 'Brīvais treniņš');
+    const workoutExercises = ref<any[]>([]);
+    const activeExercise = ref<any>(null);
+    const workoutSessionId = ref(props.workoutSession?.id || null);
+
+    // Meklēšana un filtri
+    const searchQuery = ref('');
+    const selectedMuscleGroups = ref<string[]>([]);
+
+    // ========== COMPUTED PROPERTIES ==========
+    // Pašreizējais datums
+    const currentDate = computed(() => {
+        return new Date().toLocaleDateString('lv-LV', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+    });
+
+    // Viegli pieejamas muskuļu grupas
+    const muscleGroups = computed(() => {
+        const groups = new Set<string>();
+        props.availableExercises.forEach((ex: any) => {
+            if (ex.muscle_group) {
+                groups.add(ex.muscle_group);
+            }
+        });
+        return Array.from(groups).sort();
+    });
+
+    // Filtrēti vingrinājumi
+    const filteredExercises = computed(() => {
+        return props.availableExercises.filter((exercise: any) => {
+            const matchesSearch = searchQuery.value === '' ||
+                exercise.name.toLowerCase().includes(searchQuery.value.toLowerCase());
+            const matchesMuscleGroup = selectedMuscleGroups.value.length === 0 ||
+                selectedMuscleGroups.value.includes(exercise.muscle_group);
+            return matchesSearch && matchesMuscleGroup;
+        });
+    });
+
+    // Pabeigto vingrinājumu skaits
+    const completedExercisesCount = computed(() => {
+        return workoutExercises.value.filter((ex: any) =>
+            ex.completedSets?.length === ex.sets
+        ).length;
+    });
+
+    // Formatētais laiks
+    const formattedTime = computed(() => {
+        const seconds = timer.value;
+        const hrs = Math.floor(seconds / 3600);
+        const mins = Math.floor((seconds % 3600) / 60);
+        const secs = seconds % 60;
+
+        if (hrs > 0) {
+            return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    });
+
+    // ========== FUNKCIJAS ==========
+    // Hronometra funkcijas
+    const toggleTimer = () => {
+        if (timerRunning.value) {
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+            timerRunning.value = false;
+        } else {
+            timerRunning.value = true;
+            timerInterval = setInterval(() => {
+                timer.value++;
+            }, 1000);
+        }
+    };
+
+    const resetTimer = () => {
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
+        timerRunning.value = false;
+        timer.value = 0;
+        localStorage.removeItem('workout_timer');
+        localStorage.removeItem('workout_start_time');
+    };
+
+    // Aprēķina pagājušo laiku no starta laika
+    const calculateElapsedTime = (startTime: string) => {
+        if (!startTime) return 0;
+        const start = new Date(startTime);
+        const now = new Date();
+        return Math.floor((now.getTime() - start.getTime()) / 1000);
+    };
+
+    // Sākt treniņu sesiju
+    const startWorkoutSession = async (): Promise<string | null> => {
+        try {
+            const response = await axios.post('/workout/free/start', {
+                name: workoutName.value
+            });
+
+            if (response.data?.success && response.data.session_id) {
+                workoutSessionId.value = response.data.session_id;
+
+                // Saglabā starta laiku
+                const startTime = new Date().toISOString();
+                localStorage.setItem('workout_start_time', startTime);
+                localStorage.removeItem('workout_timer');
+
+                // Start timer
+                if (!timerRunning.value) {
+                    toggleTimer();
+                }
+
+                return response.data.session_id;
+            }
+            throw new Error(response.data?.message || 'Unknown error');
+        } catch (error: any) {
+            console.error('Error starting workout session:', error);
+            let errorMessage = 'Kļūda sākot treniņu';
+            if (error.response?.data?.message) {
+                errorMessage += ': ' + error.response.data.message;
+            } else if (error.message) {
+                errorMessage += ': ' + error.message;
+            }
+            alert(errorMessage);
+            return null;
+        }
+    };
+
+    // Ielādēt sesijas datus
+    const loadWorkoutSession = async () => {
+        if (!workoutSessionId.value) return;
+
+        try {
+            const response = await axios.get(`/api/workout-session/${workoutSessionId.value}`);
+            if (response.data) {
+                workoutExercises.value = response.data.exercises.map((exercise: any) => ({
+                    id: exercise.id,
+                    session_exercise_id: exercise.session_exercise_id,
+                    name: exercise.name,
+                    muscle_group: exercise.muscle_group,
+                    sets: exercise.sets_planned,
+                    reps: exercise.reps_planned,
+                    weight: 0,
+                    currentSet: exercise.sets_completed + 1,
+                    completedSets: exercise.reps_completed?.map((reps: number, index: number) => ({
+                        reps: reps,
+                        weight: exercise.weights_used?.[index] || 0,
+                        completedAt: new Date().toISOString()
+                    })) || [],
+                    restTime: 60
+                }));
+
+                if (workoutExercises.value.length > 0 && !activeExercise.value) {
+                    setActiveExercise(workoutExercises.value[0]);
+                }
+
+                workoutName.value = response.data.name || workoutName.value;
+
+                if (response.data.started_at) {
+                    const elapsedTime = calculateElapsedTime(response.data.started_at);
+                    timer.value = elapsedTime;
+                    localStorage.setItem('workout_timer', elapsedTime.toString());
+                    localStorage.setItem('workout_start_time', response.data.started_at);
+
+                    if (!timerRunning.value) {
+                        toggleTimer();
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error loading workout session:', error);
+        }
+    };
+
+    // Pievienot vingrinājumu
+    const addExercise = async (exercise: any) => {
+        try {
+            if (!workoutSessionId.value) {
+                const sessionId = await startWorkoutSession();
+                if (!sessionId) return;
+            }
+
+            // Pārbauda, vai vingrinājums jau eksistē
+            const existingIndex = workoutExercises.value.findIndex(ex => ex.id === exercise.id);
+            if (existingIndex !== -1) {
+                setActiveExercise(workoutExercises.value[existingIndex]);
+                return;
+            }
+
+            // Pievieno backendā
+            await axios.post(`/workout/${workoutSessionId.value}/exercises`, {
+                exercise_id: exercise.id,
+                sets_planned: 3,
+                reps_planned: 10
+            });
+
+            // Atjaunina visu sarakstu no servera
+            await loadWorkoutSession();
+
+        } catch (error: any) {
+            console.error('Error adding exercise:', error);
+            if (error.response?.status === 404) {
+                alert('Treniņa sesija nav atrasta. Lūdzu, sāciet jaunu treniņu.');
+            } else {
+                alert('Kļūda pievienojot vingrinājumu: ' + (error.response?.data?.message || error.message));
+            }
+        }
+    };
+
+    // Noņemt vingrinājumu
+    const removeExercise = async (index: number) => {
+        const removedExercise = workoutExercises.value[index];
+
+        try {
+            if (removedExercise.session_exercise_id && workoutSessionId.value) {
+                await axios.delete(`/workout/${workoutSessionId.value}/exercises/${removedExercise.session_exercise_id}`);
+            }
+
+            workoutExercises.value.splice(index, 1);
+
+            // Ja tika noņemts aktīvais vingrinājums
+            if (activeExercise.value && activeExercise.value.id === removedExercise.id) {
+                if (workoutExercises.value.length > 0) {
+                    setActiveExercise(workoutExercises.value[0]);
+                } else {
+                    activeExercise.value = null;
+                }
+            }
+        } catch (error) {
+            console.error('Error removing exercise:', error);
+            alert('Kļūda noņemot vingrinājumu');
+        }
+    };
+
+    const setActiveExercise = (exercise: any) => {
+        activeExercise.value = { ...exercise };
+    };
+
+    const updateReps = (change: number) => {
+        if (activeExercise.value) {
+            const newReps = activeExercise.value.reps + change;
+            if (newReps >= 1 && newReps <= 50) {
+                activeExercise.value.reps = newReps;
+
+                const index = workoutExercises.value.findIndex((ex: any) => ex.id === activeExercise.value.id);
+                if (index !== -1) {
+                    workoutExercises.value[index].reps = newReps;
+                }
+            }
+        }
+    };
+
+    const updateWeight = (change: number) => {
+        if (activeExercise.value) {
+            const newWeight = parseFloat((activeExercise.value.weight + change).toFixed(1));
+            if (newWeight >= 0) {
+                activeExercise.value.weight = newWeight;
+
+                const index = workoutExercises.value.findIndex((ex: any) => ex.id === activeExercise.value.id);
+                if (index !== -1) {
+                    workoutExercises.value[index].weight = newWeight;
+                }
+            }
+        }
+    };
+
+    // Pabeigt setu
+    const completeSet = async () => {
+        if (!activeExercise.value) return;
+
+        try {
+            const completedSet = {
+                reps: activeExercise.value.reps,
+                weight: activeExercise.value.weight,
+                completedAt: new Date().toISOString()
+            };
+
+            const index = workoutExercises.value.findIndex((ex: any) => ex.id === activeExercise.value.id);
+            if (index !== -1) {
+                // Saglabā backendā
+                if (workoutSessionId.value && workoutExercises.value[index].session_exercise_id) {
+                    await axios.post(
+                        `/workout/${workoutSessionId.value}/exercises/${workoutExercises.value[index].session_exercise_id}/set`,
+                        {
+                            set_index: workoutExercises.value[index].completedSets.length,
+                            reps: completedSet.reps,
+                            weight: completedSet.weight
+                        }
+                    );
+                }
+
+                // Pievieno lokāli
+                workoutExercises.value[index].completedSets.push(completedSet);
+                workoutExercises.value[index].currentSet++;
+
+                if (workoutExercises.value[index].currentSet <= workoutExercises.value[index].sets) {
+                    // Atjaunina nākamo setu
+                    workoutExercises.value[index].reps = 10;
+                    workoutExercises.value[index].weight = 0;
+                    activeExercise.value = { ...workoutExercises.value[index] };
+                } else {
+                    // Pāriet uz nākamo vingrinājumu
+                    const nextIndex = (index + 1) % workoutExercises.value.length;
+                    if (workoutExercises.value.length > 0) {
+                        setActiveExercise(workoutExercises.value[nextIndex]);
+                    } else {
+                        activeExercise.value = null;
+                    }
+                }
+            }
+        } catch (error: any) {
+            console.error('Error completing set:', error);
+            alert('Kļūda saglabājot setu: ' + (error.response?.data?.message || error.message));
+        }
+    };
+
+    // Pabeigt treniņu
+    const completeWorkout = async () => {
+        if (workoutExercises.value.length === 0) {
+            alert('Lūdzu, pievieno vismaz vienu vingrinājumu!');
+            return;
+        }
+
+        const totalSets = workoutExercises.value.reduce((sum: number, ex: any) =>
+            sum + (ex.completedSets?.length || 0), 0);
+
+        if (!confirm(`Vai tiešām vēlies pabeigt treniņu?\n\n` +
+            `Treniņa nosaukums: ${workoutName.value}\n` +
+            `Ilgums: ${formattedTime.value}\n` +
+            `Vingrinājumi: ${workoutExercises.value.length}\n` +
+            `Pabeigtie seti: ${totalSets}`)) {
+            return;
+        }
+
+        if (timerRunning.value) {
+            toggleTimer();
+        }
+
+        try {
+            if (workoutSessionId.value) {
+                // Izmantojiet pareizo maršrutu
+                const response = await axios.post(`/workout/${workoutSessionId.value}/complete`, {
+                    duration_minutes: Math.round(timer.value / 60),
+                    calories_burned: Math.round(timer.value / 60 * 5),
+                    notes: ''
+                });
+
+                // Pārbaudiet atbildi
+                console.log('Response:', response);
+
+                if (response.data.success) {
+                    localStorage.removeItem('workout_timer');
+                    localStorage.removeItem('workout_start_time');
+                    router.visit('/dashboard');
+                } else {
+                    alert('Kļūda: ' + (response.data.message || 'Nezināma kļūda'));
+                }
+            }
+        } catch (error: any) {
+            console.error('Complete workout error:', error);
+            let errorMessage = 'Kļūda pabeidzot treniņu';
+            if (error.response?.data?.message) {
+                errorMessage += ': ' + error.response.data.message;
+            } else if (error.message) {
+                errorMessage += ': ' + error.message;
+            }
+            alert(errorMessage);
+        }
+    };
+
+    const resetWorkout = async () => {
+        if (confirm('Vai tiešām vēlies atcelt treniņu? Visi dati tiks zaudēti.')) {
+            try {
+                if (workoutSessionId.value) {
+                    const response = await axios.post(`/workout/${workoutSessionId.value}/cancel`);
+
+                    if (response.data.success) {
+                        workoutExercises.value = [];
+                        activeExercise.value = null;
+                        workoutName.value = 'Brīvais treniņš - ' + new Date().toLocaleDateString('lv-LV');
+                        workoutSessionId.value = null;
+                        resetTimer();
+                        localStorage.removeItem('workout_timer');
+                        localStorage.removeItem('workout_start_time');
+
+                        router.visit('/dashboard');
+                    }
+                }
+            } catch (error: any) {
+                console.error('Error canceling workout:', error);
+                alert('Kļūda atceļot treniņu: ' + (error.response?.data?.message || error.message));
+            }
+        }
+    };
+
+    const toggleMuscleGroup = (group: string) => {
+        const index = selectedMuscleGroups.value.indexOf(group);
+        if (index > -1) {
+            selectedMuscleGroups.value.splice(index, 1);
+        } else {
+            selectedMuscleGroups.value.push(group);
+        }
+    };
+
+    // Saglabā hronometru localStorage
+    const saveTimerToLocalStorage = () => {
+        if (timerRunning.value) {
+            localStorage.setItem('workout_timer', timer.value.toString());
+        }
+    };
+
+    // Ielādē hronometru no localStorage
+    const loadTimerFromLocalStorage = () => {
+        const savedTimer = localStorage.getItem('workout_timer');
+        const savedStartTime = localStorage.getItem('workout_start_time');
+
+        if (savedTimer && savedStartTime) {
+            const startTime = new Date(savedStartTime);
+            const now = new Date();
+            const hoursDiff = (now.getTime() - startTime.getTime()) / (1000 * 60 * 60);
+
+            if (hoursDiff < 24) {
+                const elapsedTime = calculateElapsedTime(savedStartTime);
+                timer.value = elapsedTime;
+                return true;
+            } else {
+                localStorage.removeItem('workout_timer');
+                localStorage.removeItem('workout_start_time');
+            }
+        }
+        return false;
+    };
+
+    // ========== LIFECYCLE HOOKS ==========
+    onMounted(() => {
+        console.log('Component mounted with props:', props);
+
+        // Mēģina ielādēt hronometru no localStorage
+        const hasSavedTimer = loadTimerFromLocalStorage();
+
+        // Pārbauda, vai lapā ienāk ar aktīvu sesiju
+        if (props.workoutSession) {
+            workoutSessionId.value = props.workoutSession.id;
+            console.log('Workout session from props:', props.workoutSession);
+
+            // Ielādē sesijas datus
+            loadWorkoutSession();
+
+            // Iestata hronometru no sesijas starta laika
+            if (props.workoutSession.started_at) {
+                const elapsedTime = calculateElapsedTime(props.workoutSession.started_at);
+                timer.value = elapsedTime;
+                console.log('Timer set from session start time:', elapsedTime);
+            }
+
+        } else if (hasSavedTimer) {
+            console.log('Timer loaded from localStorage:', timer.value);
+            if (!timerRunning.value) {
+                toggleTimer();
+            }
+        }
+
+        // Sāk hronometru automātiski, ja ir sesija un nav sākts
+        if (!timerRunning.value && workoutSessionId.value) {
+            console.log('Starting timer for session:', workoutSessionId.value);
+            toggleTimer();
+        }
+
+        // Saglabā timer ik pēc 30 sekundēm
+        const saveInterval = setInterval(saveTimerToLocalStorage, 30000);
+
+        // Notīrām intervālu, kad komponents tiek noņemts
+        return () => {
+            clearInterval(saveInterval);
+            if (timerInterval) {
+                clearInterval(timerInterval);
+            }
+        };
+    });
+
+    // Saglabā timer, kad tas mainās
+    watch(timer, () => {
+        if (timerRunning.value && timer.value % 30 === 0) {
+            saveTimerToLocalStorage();
+        }
+    });
+
+    onUnmounted(() => {
+        if (timerInterval) {
+            clearInterval(timerInterval);
+        }
+    });
+</script>
+
 <template>
     <AppLayout>
         <div class="dashboard-container">
@@ -20,7 +550,7 @@
                 <!-- Hronometrs -->
                 <div class="timer-section">
                     <h2 class="timer-title">Treniņa laiks</h2>
-                    <div class="timer-display">{{ formatTime(timer) }}</div>
+                    <div class="timer-display">{{ formattedTime }}</div>
                     <div class="timer-controls">
                         <button @click="toggleTimer" class="timer-btn" :class="timerRunning ? 'pause-btn' : 'start-btn'">
                             {{ timerRunning ? '⏸️ Pauze' : '▶️ Sākt' }}
@@ -142,9 +672,9 @@
                                         </div>
                                     </div>
 
-                                    <button @click="completeExercise"
+                                    <button @click="completeSet"
                                             class="complete-exercise-btn">
-                                        Pabeigt vingrinājumu
+                                        Pabeigt setu
                                     </button>
                                 </div>
 
@@ -235,7 +765,7 @@
                             <span class="status-count">{{ workoutExercises.length }} vingrinājumi</span>
                             <span class="status-count">{{ completedExercisesCount }} pabeigti</span>
                         </div>
-                        <div class="status-timer">{{ formatTime(timer) }}</div>
+                        <div class="status-timer">{{ formattedTime }}</div>
                     </div>
                 </div>
             </div>
@@ -243,388 +773,20 @@
     </AppLayout>
 </template>
 
-<script setup>
-    import { ref, computed, onMounted, onUnmounted } from 'vue';
-    import { router, usePage } from '@inertiajs/vue3';
-    import AppLayout from '@/Layouts/AppLayout.vue';
-    import axios from 'axios';
-
-    const page = usePage();
-
-    // Iegūst props
-    const props = defineProps({
-        availableExercises: {
-            type: Array,
-            default: () => []
-        },
-        initialWorkout: {
-            type: Object,
-            default: () => ({})
-        },
-        routine: {
-            type: Object,
-            default: null
-        }
-    });
-
-    // Hronometra stāvokļi
-    const timer = ref(0);
-    const timerRunning = ref(false);
-    let timerInterval = null;
-
-    // Treniņa dati
-    const workoutName = ref(props.initialWorkout.name || 'Brīvais treniņš');
-    const workoutExercises = ref([]);
-    const activeExercise = ref(null);
-
-    // Meklēšana un filtri
-    const searchQuery = ref('');
-    const selectedMuscleGroups = ref([]);
-
-    // Pašreizējā datuma formāts
-    const currentDate = computed(() => {
-        return new Date().toLocaleDateString('lv-LV', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-        });
-    });
-
-    // Viegli pieejamas muskuļu grupas
-    const muscleGroups = computed(() => {
-        const groups = new Set();
-        props.availableExercises.forEach(ex => {
-            if (ex.muscle_group) {
-                groups.add(ex.muscle_group);
-            }
-        });
-        return Array.from(groups).sort();
-    });
-
-    // Filtrēti vingrinājumi
-    const filteredExercises = computed(() => {
-        return props.availableExercises.filter(exercise => {
-            // Meklēšana pēc nosaukuma
-            const matchesSearch = searchQuery.value === '' ||
-                exercise.name.toLowerCase().includes(searchQuery.value.toLowerCase());
-
-            // Filtri pēc muskuļu grupām
-            const matchesMuscleGroup = selectedMuscleGroups.value.length === 0 ||
-                selectedMuscleGroups.value.includes(exercise.muscle_group);
-
-            return matchesSearch && matchesMuscleGroup;
-        });
-    });
-
-    // Hronometra funkcijas
-    const formatTime = (seconds) => {
-        const hrs = Math.floor(seconds / 3600);
-        const mins = Math.floor((seconds % 3600) / 60);
-        const secs = seconds % 60;
-
-        if (hrs > 0) {
-            return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-        }
-        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    };
-
-    const toggleTimer = () => {
-        if (timerRunning.value) {
-            clearInterval(timerInterval);
-            timerRunning.value = false;
-        } else {
-            timerRunning.value = true;
-            timerInterval = setInterval(() => {
-                timer.value++;
-            }, 1000);
-        }
-    };
-
-    const resetTimer = () => {
-        clearInterval(timerInterval);
-        timerRunning.value = false;
-        timer.value = 0;
-    };
-
-    // Treniņa funkcijas
-    const addExercise = (exercise) => {
-        // Pārbauda, vai vingrinājums jau eksistē
-        const existingIndex = workoutExercises.value.findIndex(ex => ex.id === exercise.id);
-        if (existingIndex !== -1) {
-            // Ja vingrinājums jau eksistē, iestata to kā aktīvo
-            setActiveExercise(workoutExercises.value[existingIndex]);
-            return;
-        }
-
-        const newExercise = {
-            id: exercise.id,
-            name: exercise.name,
-            muscle_group: exercise.muscle_group,
-            sets: 3,
-            reps: 10,
-            weight: 0,
-            currentSet: 1,
-            completedSets: [],
-            restTime: 60
-        };
-
-        workoutExercises.value.push(newExercise);
-
-        // Ja nav aktīvā vingrinājuma, iestatām šo kā aktīvo
-        if (!activeExercise.value) {
-            setActiveExercise(newExercise);
-        }
-    };
-
-    const removeExercise = (index) => {
-        const removedExercise = workoutExercises.value[index];
-        workoutExercises.value.splice(index, 1);
-
-        // Ja tika noņemts aktīvais vingrinājums
-        if (activeExercise.value && activeExercise.value.id === removedExercise.id) {
-            if (workoutExercises.value.length > 0) {
-                setActiveExercise(workoutExercises.value[0]);
-            } else {
-                activeExercise.value = null;
-            }
-        }
-    };
-
-    const setActiveExercise = (exercise) => {
-        activeExercise.value = { ...exercise };
-    };
-
-    const updateReps = (change) => {
-        if (activeExercise.value) {
-            const newReps = activeExercise.value.reps + change;
-            if (newReps >= 1 && newReps <= 50) {
-                activeExercise.value.reps = newReps;
-
-                // Atjaunina arī oriģinālajā sarakstā
-                const index = workoutExercises.value.findIndex(ex => ex.id === activeExercise.value.id);
-                if (index !== -1) {
-                    workoutExercises.value[index].reps = newReps;
-                }
-            }
-        }
-    };
-
-    const updateWeight = (change) => {
-        if (activeExercise.value) {
-            const newWeight = parseFloat((activeExercise.value.weight + change).toFixed(1));
-            if (newWeight >= 0) {
-                activeExercise.value.weight = newWeight;
-
-                // Atjaunina arī oriģinālajā sarakstā
-                const index = workoutExercises.value.findIndex(ex => ex.id === activeExercise.value.id);
-                if (index !== -1) {
-                    workoutExercises.value[index].weight = newWeight;
-                }
-            }
-        }
-    };
-
-    const completeExercise = () => {
-        if (!activeExercise.value) return;
-
-        // Pievieno pabeigto setu
-        const completedSet = {
-            reps: activeExercise.value.reps,
-            weight: activeExercise.value.weight,
-            completedAt: new Date().toISOString()
-        };
-
-        // Atjaunina treniņa vingrinājumu sarakstā
-        const index = workoutExercises.value.findIndex(ex => ex.id === activeExercise.value.id);
-        if (index !== -1) {
-            workoutExercises.value[index].completedSets.push(completedSet);
-            workoutExercises.value[index].currentSet++;
-
-            // Ja vēl ir seti, reset seta vērtības
-            if (workoutExercises.value[index].currentSet <= workoutExercises.value[index].sets) {
-                workoutExercises.value[index].reps = 10;
-                workoutExercises.value[index].weight = 0;
-
-                // Atjaunina aktīvo vingrinājumu
-                activeExercise.value = { ...workoutExercises.value[index] };
-            } else {
-                // Vingrinājums pabeigts
-                const nextIndex = (index + 1) % workoutExercises.value.length;
-                if (workoutExercises.value.length > 0) {
-                    setActiveExercise(workoutExercises.value[nextIndex]);
-                }
-            }
-        }
-    };
-
-    const completeWorkout = async () => {
-        if (workoutExercises.value.length === 0) {
-            alert('Lūdzu, pievieno vismaz vienu vingrinājumu!');
-            return;
-        }
-
-        const totalSets = workoutExercises.value.reduce((sum, ex) => sum + ex.completedSets.length, 0);
-
-        if (!confirm(`Vai tiešām vēlies pabeigt treniņu?\n\n` +
-            `Treniņa nosaukums: ${workoutName.value}\n` +
-            `Ilgums: ${formatTime(timer.value)}\n` +
-            `Vingrinājumi: ${workoutExercises.value.length}\n` +
-            `Pabeigtie seti: ${totalSets}`)) {
-            return;
-        }
-
-        // Aptur hronometru
-        if (timerRunning.value) {
-            toggleTimer();
-        }
-
-        try {
-            // Saglabā treniņa datus localStorage pirms redirect
-            localStorage.setItem('completedWorkout', JSON.stringify({
-                name: workoutName.value,
-                duration: Math.round(timer.value / 60),
-                exercises: workoutExercises.value.map(exercise => ({
-                    exercise_id: exercise.id,
-                    name: exercise.name,
-                    muscle_group: exercise.muscle_group,
-                    sets: exercise.completedSets.length,
-                    reps: exercise.completedSets.reduce((sum, set) => sum + set.reps, 0) / exercise.completedSets.length || 0,
-                    weight: exercise.completedSets.reduce((sum, set) => sum + set.weight, 0) / exercise.completedSets.length || 0
-                })),
-                completedAt: new Date().toISOString()
-            }));
-
-            // NOTĪRĀM localStorage pirms redirect, jo tas tiek notīrīts dashboardā
-            localStorage.removeItem('completedWorkout');
-
-            // Pārvirza uz dashboard
-            router.visit('/dashboard', {
-                onSuccess: () => {
-                    // Pēc veiksmīga pārvirzījuma, saglabājam workout log backendā
-                    saveWorkoutToBackend();
-                }
-            });
-
-        } catch (error) {
-            console.error('Error saving workout:', error);
-            alert('Kļūda saglabājot treniņu. Mēģini vēlreiz.');
-        }
-    };
-
-    const saveWorkoutToBackend = async () => {
-        try {
-            const workoutData = JSON.parse(localStorage.getItem('completedWorkout') || '{}');
-
-            if (Object.keys(workoutData).length > 0) {
-                const response = await axios.post('/api/workouts/start', {
-                    name: workoutData.name,
-                    type: 'free',
-                    duration_minutes: workoutData.duration,
-                    exercises: workoutData.exercises
-                });
-
-                if (response.data && response.data.workout_id) {
-                    await axios.post(`/api/workouts/${response.data.workout_id}/complete`, {
-                        duration: workoutData.duration,
-                        exercises: workoutData.exercises
-                    });
-                }
-            }
-        } catch (error) {
-            console.error('Error saving workout to backend:', error);
-        }
-    };
-
-    const resetWorkout = () => {
-        if (confirm('Vai tiešām vēlies dzēst visu treniņu? Visi dati tiks zaudēti.')) {
-            workoutExercises.value = [];
-            activeExercise.value = null;
-            workoutName.value = 'Brīvais treniņš - ' + new Date().toLocaleDateString('lv-LV');
-            resetTimer();
-        }
-    };
-
-    const toggleMuscleGroup = (group) => {
-        const index = selectedMuscleGroups.value.indexOf(group);
-        if (index > -1) {
-            selectedMuscleGroups.value.splice(index, 1);
-        } else {
-            selectedMuscleGroups.value.push(group);
-        }
-    };
-
-    const completedExercisesCount = computed(() => {
-        return workoutExercises.value.filter(ex => ex.completedSets.length === ex.sets).length;
-    });
-
-    // Ielādē rutīnas vingrinājumus, ja ir padots routine props
-    const loadRoutineExercises = () => {
-        if (props.routine && props.routine.exercises && props.routine.exercises.length > 0) {
-            workoutExercises.value = [];
-            workoutName.value = props.routine.name || workoutName.value;
-
-            props.routine.exercises.forEach(exercise => {
-                addExercise({
-                    id: exercise.id,
-                    name: exercise.name,
-                    muscle_group: exercise.muscle_group || exercise.primary_muscle || 'Cits',
-                    sets: exercise.sets || 3,
-                    reps: exercise.reps || 10,
-                    rest_time: exercise.rest_time || 60
-                });
-            });
-        }
-    };
-
-    // onMounted hook
-    onMounted(() => {
-        // Ielādē rutīnas vingrinājumus
-        loadRoutineExercises();
-
-        // Sāk hronometru automātiski
-        if (!timerRunning.value) {
-            toggleTimer();
-        }
-
-        // Pārbauda, vai nav saglabāts nepabeigts treniņš
-        const savedWorkout = localStorage.getItem('savedWorkout');
-        if (savedWorkout && confirm('Vai vēlaties atjaunot nepabeigto treniņu?')) {
-            const workout = JSON.parse(savedWorkout);
-            workoutExercises.value = workout.exercises || [];
-            workoutName.value = workout.name || workoutName.value;
-            timer.value = workout.timer || 0;
-
-            if (workoutExercises.value.length > 0) {
-                setActiveExercise(workoutExercises.value[0]);
-            }
-        }
-
-        // Saglabā treniņu pārlādēšanas gadījumā
-        window.addEventListener('beforeunload', saveWorkoutBeforeUnload);
-    });
-
-    // Saglabā treniņu pirms aizvēršanas
-    const saveWorkoutBeforeUnload = () => {
-        if (workoutExercises.value.length > 0) {
-            localStorage.setItem('savedWorkout', JSON.stringify({
-                name: workoutName.value,
-                exercises: workoutExercises.value,
-                timer: timer.value,
-                savedAt: new Date().toISOString()
-            }));
-        }
-    };
-
-    onUnmounted(() => {
-        if (timerInterval) {
-            clearInterval(timerInterval);
-        }
-        window.removeEventListener('beforeunload', saveWorkoutBeforeUnload);
-    });
-</script>
-
 <style scoped>
+
+    .dashboard-container {
+        min-height: 100vh;
+        background-color: #f3f4f6;
+    }
+
+    .dashboard {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 1.5rem;
+    }
+
+
     /* Galvenie stili */
     .dashboard-container {
         min-height: 100vh;
