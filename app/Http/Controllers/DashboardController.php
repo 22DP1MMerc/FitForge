@@ -9,6 +9,7 @@ use App\Models\Routine;
 use App\Models\WorkoutSession;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use App\Models\WorkoutSessionExercise;
 
@@ -45,6 +46,7 @@ class DashboardController extends Controller
                 'user' => $activeWorkout->user
             ],
             'hasActiveWorkout' => true,
+            'activeRoutine' => $this->getActiveRoutine($activeWorkout->user), // ✅ Pievienojam
             'activeWorkout' => [
                 'id' => $activeWorkout->id,
                 'name' => $activeWorkout->name,
@@ -63,21 +65,20 @@ class DashboardController extends Controller
                     ];
                 })
             ],
-            // Pievienojiet arī normālos dashboard datus
             'stats' => $this->getStats($activeWorkout->user),
             'todayWorkout' => $this->getTodayWorkout($activeWorkout->user),
             'recentActivities' => [],
-           'weeklySchedule' => $this->getWeeklySchedule($activeWorkout->user),
-            'weeklyWeightStats' => $weeklyWeightStats // Šis tagad ir definēts
+            'weeklySchedule' => $this->getWeeklySchedule($activeWorkout->user),
+            'weeklyWeightStats' => $weeklyWeightStats
         ]);
     }
 
     private function showNormalDashboard($user)
     {
-        // 1. Pašreizējā sērija
+        // Pašreizējā sērija
         $currentStreak = $this->calculateCurrentStreak($user);
         
-        // 2. Šonedēļas treniņi
+        // Šonedēļas treniņi
         $weeklyWorkouts = WorkoutLog::where('user_id', $user->id)
             ->whereBetween('completed_at', [
                 Carbon::now()->startOfWeek(),
@@ -85,30 +86,24 @@ class DashboardController extends Controller
             ])
             ->count();
         
-        // 3. Kopējais treniņu skaits
+        // Kopējais treniņu skaits
         $totalWorkouts = WorkoutLog::where('user_id', $user->id)->count();
         
-        // 4. Kopējais laiks
+        // Kopējais laiks
         $totalDuration = WorkoutLog::where('user_id', $user->id)->sum('duration_minutes');
         
-        // 5. Kalorijas
+        // Kalorijas
         $caloriesBurned = WorkoutLog::where('user_id', $user->id)->sum('calories_burned') ?? 0;
         
-        // 6. Personīgie rekordi
+        // Personīgie rekordi
         $personalRecords = PersonalRecord::where('user_id', $user->id)->count();
         
-        // 7. Sasniegtie mērķi
+        // Sasniegtie mērķi
         $goalsAchieved = Goal::where('user_id', $user->id)
             ->where('completed', true)
             ->count();
         
-        // DEBUG: Pārbaudiet skaitus
-        logger('Weekly workouts: ' . $weeklyWorkouts);
-        logger('Total workouts: ' . $totalWorkouts);
-        logger('Personal records: ' . $personalRecords);
-        logger('Goals achieved: ' . $goalsAchieved);
-        
-        // 8. Nedēļas progress (vienkārša versija)
+        // Nedēļas progress
         $weeklyProgress = [
             'monday' => 0,
             'tuesday' => 0,
@@ -119,37 +114,27 @@ class DashboardController extends Controller
             'sunday' => 0
         ];
         
-        // Aprēķiniet progress pēdējās 7 dienās
-        for ($i = 0; $i < 7; $i++) {
-            $day = Carbon::now()->startOfWeek()->addDays($i);
-            $dayKey = strtolower($day->format('l'));
-            
-            $hasWorkout = WorkoutLog::where('user_id', $user->id)
-                ->whereDate('completed_at', $day->format('Y-m-d'))
-                ->exists();
-            
-            $weeklyProgress[$dayKey] = $hasWorkout ? 100 : 0;
-        }
+        // Aktīvā rutīna no sesijas
+        $activeRoutine = $this->getActiveRoutine($user);
         
-        // 9. Šodienas treniņš
+        // Šodienas treniņš
         $todayWorkout = $this->getTodayWorkout($user);
         
-        // 10. Nesenie notikumi
+        // Nesenie notikumi
         $recentActivities = $this->getRecentActivities($user);
         
- // 11. Nedēļas grafiks (izmantojam laboto)
-    $weeklySchedule = $this->getWeeklySchedule($user);
-    
-    // 12. Iegūst svaru statistiku (izmantojam laboto)
-    $weeklyWeightStats = $this->getWeeklyWeightStats($user);
-    
-
-
+        // Nedēļas grafiks
+        $weeklySchedule = $this->getWeeklySchedule($user);
+        
+        // Iegūst svaru statistiku
+        $weeklyWeightStats = $this->getWeeklyWeightStats($user);
+        
         return inertia('Dashboard', [
             'auth' => [
                 'user' => $user
             ],
             'hasActiveWorkout' => false,
+            'activeRoutine' => $activeRoutine,
             'stats' => [
                 'currentStreak' => $currentStreak,
                 'weeklyWorkouts' => $weeklyWorkouts,
@@ -166,10 +151,9 @@ class DashboardController extends Controller
             'weeklyWeightStats' => $weeklyWeightStats 
         ]);
     }
-    
+
     private function getStats($user)
     {
-        // Šī metode tiek izsaukta no showActiveWorkout, tāpēc vajag atkārtot aprēķinus
         $currentStreak = $this->calculateCurrentStreak($user);
         $weeklyWorkouts = WorkoutLog::where('user_id', $user->id)
             ->whereBetween('completed_at', [
@@ -220,41 +204,52 @@ class DashboardController extends Controller
         ];
     }
     
-    private function calculateCurrentStreak($user)
-    {
-        // Vienkārša versija - skaita dienas pēc kārtas ar treniņiem
-        $workoutDays = WorkoutLog::where('user_id', $user->id)
-            ->where('completed_at', '>=', Carbon::now()->subDays(30))
-            ->orderBy('completed_at', 'desc')
-            ->get()
-            ->groupBy(function($date) {
-                return Carbon::parse($date->completed_at)->format('Y-m-d');
-            })
-            ->keys()
-            ->toArray();
-        
-        $streak = 0;
-        $currentDate = Carbon::now();
-        
-        foreach ($workoutDays as $workoutDay) {
-            $workoutDate = Carbon::parse($workoutDay);
-            
-            if ($workoutDate->isSameDay($currentDate) || 
-                $workoutDate->isSameDay($currentDate->copy()->subDay())) {
-                $streak++;
-                $currentDate->subDay();
-            } else {
-                break;
-            }
-        }
-        
-        return $streak;
+private function calculateCurrentStreak($user)
+{
+    // Get all weeks with at least one workout, ordered by week starting from most recent
+    $weeksWithWorkouts = WorkoutLog::where('user_id', $user->id)
+        ->whereNotNull('completed_at')
+        ->select(DB::raw('YEARWEEK(completed_at, 1) as week_number, MIN(completed_at) as week_start'))
+        ->groupBy('week_number')
+        ->orderBy('week_start', 'desc')
+        ->get();
+    
+    if ($weeksWithWorkouts->isEmpty()) {
+        return 0;
     }
+    
+    $streak = 1; // Start with 1 for the most recent week that has workouts
+    $currentWeek = Carbon::parse($weeksWithWorkouts[0]->week_start)->startOfWeek();
+    
+    // Check if the most recent week with workout is current week or last week
+    $today = Carbon::now()->startOfWeek();
+    $weekDiff = $today->diffInWeeks($currentWeek);
+    
+    // If the most recent workout week is older than last week, no streak
+    if ($weekDiff > 1) {
+        return 0;
+    }
+    
+    // Check consecutive weeks going backwards
+    for ($i = 1; $i < $weeksWithWorkouts->count(); $i++) {
+        $nextWeek = Carbon::parse($weeksWithWorkouts[$i]->week_start)->startOfWeek();
+        $expectedPreviousWeek = $currentWeek->copy()->subWeek();
+        
+        if ($nextWeek->equalTo($expectedPreviousWeek)) {
+            $streak++;
+            $currentWeek = $nextWeek;
+        } else {
+            break;
+        }
+    }
+    
+    return $streak;
+}
     
     private function getTodayWorkout($user)
     {
         $today = Carbon::now();
-        $dayNumber = $today->dayOfWeekIso; // 1-7
+        $dayNumber = $today->dayOfWeekIso;
         
         // Atrodam rutīnu šodienai
         $routine = Routine::with(['exercises' => function($query) use ($dayNumber) {
@@ -365,226 +360,235 @@ class DashboardController extends Controller
         return array_slice($activities, 0, 3);
     }
 
-    // DashboardController.php - pievienojiet šo funkciju
-private function getActiveRoutine($user)
-{
-    // Mēģinām iegūt aktīvo rutīnu no sesijas
-    $activeRoutineId = session('activeRoutine');
-    
-    if ($activeRoutineId) {
-        $activeRoutine = Routine::where('user_id', $user->id)
-            ->where('id', $activeRoutineId)
-            ->with(['exercises' => function($query) {
-                $query->withPivot('day_number');
-            }])
-            ->first();
+    public function getActiveRoutine($user)
+    {
+        // Mēģinām iegūt aktīvo rutīnu no sesijas
+        $activeRoutineId = session('activeRoutine');
         
-        if ($activeRoutine) {
-            return $activeRoutine;
+        \Log::info('DashboardController: Checking active routine - ID: ' . ($activeRoutineId ?? 'null'));
+        
+        if ($activeRoutineId) {
+            $activeRoutine = Routine::where(function($query) use ($user) {
+                    $query->where('user_id', $user->id)
+                          ->orWhere('is_public', true);
+                })
+                ->where('id', $activeRoutineId)
+                ->with(['exercises' => function($query) {
+                    $query->withPivot(['day_number', 'sets', 'reps', 'rest_seconds', 'notes'])
+                          ->orderBy('exercise_routine.day_number');
+                }])
+                ->first();
+            
+            if ($activeRoutine) {
+                \Log::info('DashboardController: Found active routine - Name: ' . $activeRoutine->name);
+                
+                // Formatējam datus, lai tie būtu saderīgi ar frontend
+                $formattedRoutine = [
+                    'id' => $activeRoutine->id,
+                    'name' => $activeRoutine->name,
+                    'description' => $activeRoutine->description,
+                    'is_public' => $activeRoutine->is_public,
+                    'user_id' => $activeRoutine->user_id,
+                    'exercises_count' => $activeRoutine->exercises->count(),
+                    'exercises' => $activeRoutine->exercises->map(function($exercise) {
+                        return [
+                            'id' => $exercise->id,
+                            'name' => $exercise->name,
+                            'muscle_group' => $exercise->muscle_group,
+                            'description' => $exercise->description,
+                            'day_number' => $exercise->pivot->day_number,
+                            'sets' => $exercise->pivot->sets,
+                            'reps' => $exercise->pivot->reps,
+                            'rest_seconds' => $exercise->pivot->rest_seconds,
+                            'notes' => $exercise->pivot->notes,
+                            'pivot' => [
+                                'day_number' => $exercise->pivot->day_number,
+                                'sets' => $exercise->pivot->sets,
+                                'reps' => $exercise->pivot->reps,
+                                'rest_seconds' => $exercise->pivot->rest_seconds,
+                                'notes' => $exercise->pivot->notes
+                            ]
+                        ];
+                    })->toArray()
+                ];
+                
+                \Log::info('DashboardController: Formatted routine exercises count: ' . count($formattedRoutine['exercises']));
+                return $formattedRoutine;
+            } else {
+                \Log::warning('DashboardController: Active routine not found for ID: ' . $activeRoutineId);
+            }
+        } else {
+            \Log::info('DashboardController: No active routine ID in session');
         }
+        
+        return null;
     }
-    
-    return null;
-}
 
-private function getWeeklySchedule($user)
-{
-    $schedule = [];
-    $days = ['Pirmdiena', 'Otrdiena', 'Trešdiena', 'Ceturtdiena', 'Piektdiena', 'Sestdiena', 'Svētdiena'];
-    
-    // 1. Aktīvā rutīna
-    $activeRoutine = null;
-    $activeRoutineId = session('activeRoutine');
-    
-    if ($activeRoutineId) {
-        // Aktīvā var būt jebkura rutīna (publiska vai lietotāja)
-        $activeRoutine = Routine::where(function($query) use ($user) {
+    private function getWeeklySchedule($user)
+    {
+        $schedule = [];
+        $days = ['Pirmdiena', 'Otrdiena', 'Trešdiena', 'Ceturtdiena', 'Piektdiena', 'Sestdiena', 'Svētdiena'];
+        
+        // 1. Aktīvā rutīna
+        $activeRoutine = null;
+        $activeRoutineId = session('activeRoutine');
+        
+        if ($activeRoutineId) {
+            // Aktīvā var būt jebkura rutīna (publiska vai lietotāja)
+            $activeRoutine = Routine::where(function($query) use ($user) {
+                    $query->where('user_id', $user->id)
+                          ->orWhere('is_public', true);
+                })
+                ->where('id', $activeRoutineId)
+                ->with(['exercises' => function($query) {
+                    $query->withPivot('day_number');
+                }])
+                ->first();
+        }
+        
+        // 2. Lietotāja un publiskās rutīnas
+        $allRoutines = Routine::where(function($query) use ($user) {
                 $query->where('user_id', $user->id)
                       ->orWhere('is_public', true);
             })
-            ->where('id', $activeRoutineId)
             ->with(['exercises' => function($query) {
                 $query->withPivot('day_number');
             }])
-            ->first();
-    }
-    
-    // 2. Lietotāja un publiskās rutīnas
-    $allRoutines = Routine::where(function($query) use ($user) {
-            $query->where('user_id', $user->id)
-                  ->orWhere('is_public', true);
-        })
-        ->with(['exercises' => function($query) {
-            $query->withPivot('day_number');
-        }])
-        ->get();
-    
-    for ($dayNumber = 1; $dayNumber <= 7; $dayNumber++) {
-        $routineForDay = null;
-        $isActiveRoutineDay = false;
-        $workoutName = 'Atpūtas diena'; // ✅ DEFAULT
+            ->get();
         
-        // A. Pirmā prioritāte: aktīvā rutīna
-        if ($activeRoutine) {
-            $hasExercisesForDay = $activeRoutine->exercises
-                ->contains(function($exercise) use ($dayNumber) {
-                    return $exercise->pivot->day_number == $dayNumber;
-                });
+        for ($dayNumber = 1; $dayNumber <= 7; $dayNumber++) {
+            $routineForDay = null;
+            $isActiveRoutineDay = false;
+            $workoutName = 'Atpūtas diena';
             
-            if ($hasExercisesForDay) {
-                $routineForDay = $activeRoutine;
-                $workoutName = $activeRoutine->name;
-                $isActiveRoutineDay = true;
+            // A. Pirmā prioritāte: aktīvā rutīna
+            if ($activeRoutine) {
+                $hasExercisesForDay = $activeRoutine->exercises
+                    ->contains(function($exercise) use ($dayNumber) {
+                        return $exercise->pivot->day_number == $dayNumber;
+                    });
+                
+                if ($hasExercisesForDay) {
+                    $routineForDay = $activeRoutine;
+                    $workoutName = $activeRoutine->name;
+                    $isActiveRoutineDay = true;
+                }
             }
+            
+            $schedule[] = [
+                'id' => $dayNumber,
+                'day_name' => $days[$dayNumber - 1],
+                'day_number' => $dayNumber,
+                'workout_name' => $workoutName,
+                'routine_id' => $routineForDay ? $routineForDay->id : null,
+                'is_active_routine' => $isActiveRoutineDay,
+                'has_workout' => $routineForDay !== null,
+                'is_rest_day' => $routineForDay === null
+            ];
         }
         
-        
-        
-        $schedule[] = [
-            'id' => $dayNumber,
-            'day_name' => $days[$dayNumber - 1],
-            'day_number' => $dayNumber,
-            'workout_name' => $workoutName, // ✅ Vienmēr būs "Atpūtas diena" ja nav rutīnas
-            'routine_id' => $routineForDay ? $routineForDay->id : null,
-            'is_active_routine' => $isActiveRoutineDay,
-            'has_workout' => $routineForDay !== null,
-            'is_rest_day' => $routineForDay === null // ✅ Pievienojam atpūtas dienas indikatoru
-        ];
+        return $schedule;
     }
-    
-    return $schedule;
-}
 
-private function getWeeklyWeightStats($user)
-{
-    $weekStart = Carbon::now()->startOfWeek();
-    $weekEnd = Carbon::now()->endOfWeek();
-    
-    \Log::info('=== GETTING WEEKLY WEIGHT STATS ===');
-    
-    // 1. VISPIRMS MĒĢINĀM IEGŪT DATUS NO WorkoutLog (ja tāds ir)
-    $workoutLogs = WorkoutLog::where('user_id', $user->id)
-        ->whereBetween('completed_at', [$weekStart, $weekEnd])
-        ->get();
-    
-    \Log::info('WorkoutLogs found: ' . $workoutLogs->count());
-    
-    $weightStats = [
-        'Pirmdiena' => ['totalWeight' => 0, 'exercises' => 0],
-        'Otrdiena' => ['totalWeight' => 0, 'exercises' => 0],
-        'Trešdiena' => ['totalWeight' => 0, 'exercises' => 0],
-        'Ceturtdiena' => ['totalWeight' => 0, 'exercises' => 0],
-        'Piektdiena' => ['totalWeight' => 0, 'exercises' => 0],
-        'Sestdiena' => ['totalWeight' => 0, 'exercises' => 0],
-        'Svētdiena' => ['totalWeight' => 0, 'exercises' => 0]
-    ];
-    
-    $dayMapping = [
-        'Monday' => 'Pirmdiena',
-        'Tuesday' => 'Otrdiena',
-        'Wednesday' => 'Trešdiena',
-        'Thursday' => 'Ceturtdiena',
-        'Friday' => 'Piektdiena',
-        'Saturday' => 'Sestdiena',
-        'Sunday' => 'Svētdiena'
-    ];
-    
-    // 2. Ja ir workout logs, mēģinām no tiem iegūt datus
-    if ($workoutLogs->count() > 0) {
+    private function getWeeklyWeightStats($user)
+    {
+        // Izmantojam tieši WorkoutLog totalWeight atribūtu
+        $weekStart = Carbon::now()->startOfWeek();
+        
+        $workoutLogs = WorkoutLog::where('user_id', $user->id)
+            ->whereNotNull('completed_at')
+            ->where('completed_at', '>=', $weekStart)
+            ->get();
+        
+        $dayMapping = [
+            'Monday' => 'Pirmdiena',
+            'Tuesday' => 'Otrdiena', 
+            'Wednesday' => 'Trešdiena',
+            'Thursday' => 'Ceturtdiena',
+            'Friday' => 'Piektdiena',
+            'Saturday' => 'Sestdiena',
+            'Sunday' => 'Svētdiena'
+        ];
+        
+        $weightStats = [];
+        foreach ($dayMapping as $lat) {
+            $weightStats[$lat] = ['totalWeight' => 0, 'exercises' => 0];
+        }
+        
         foreach ($workoutLogs as $log) {
-            if (!$log->completed_at) continue;
-            
             $englishDay = $log->completed_at->format('l');
             $latvianDay = $dayMapping[$englishDay] ?? null;
             
             if (!$latvianDay) continue;
             
-            \Log::info('WorkoutLog ID: ' . $log->id . ', Day: ' . $latvianDay);
+            $totalWeight = 0;
+            $exercisesCount = 0;
             
-            // Mēģinām atrast attiecīgo WorkoutSession
-            $session = WorkoutSession::where('user_id', $user->id)
-                ->where('name', 'like', '%' . $log->name . '%')
-                ->orWhere('created_at', $log->completed_at)
-                ->first();
+            // Saskaitam svarus no katra logExercise
+            foreach ($log->logExercises as $logExercise) {
+                $weights = $logExercise->weights_used;
+                if (!$weights || !is_array($weights)) continue;
+                
+                $hasWeight = false;
+                foreach ($weights as $set) {
+                    $weightValue = 0;
+                    
+                    if (is_numeric($set)) {
+                        $weightValue = floatval($set);
+                    } elseif (is_array($set) && isset($set['weight'])) {
+                        $weightValue = floatval($set['weight']);
+                    }
+                    
+                    if ($weightValue > 0) {
+                        $totalWeight += $weightValue;
+                        $hasWeight = true;
+                    }
+                }
+                
+                if ($hasWeight) {
+                    $exercisesCount++;
+                }
+            }
             
-            if ($session) {
-                $sessionWeight = $this->calculateSessionWeight($session);
-                $weightStats[$latvianDay]['totalWeight'] += $sessionWeight;
-                if ($sessionWeight > 0) {
-                    $weightStats[$latvianDay]['exercises']++;
+            if ($totalWeight > 0) {
+                $weightStats[$latvianDay]['totalWeight'] += $totalWeight;
+                $weightStats[$latvianDay]['exercises'] += $exercisesCount;
+            }
+        }
+        
+        return $weightStats;
+    }
+    
+    private function calculateSessionWeight($session)
+    {
+        $totalWeight = 0;
+        
+        $session->load(['exercises' => function($query) {
+            $query->with('exercise');
+        }]);
+        
+        foreach ($session->exercises as $sessionExercise) {
+            $weights = $sessionExercise->weights_used;
+            
+            if (empty($weights) || !is_array($weights)) {
+                continue;
+            }
+            
+            foreach ($weights as $set) {
+                if (is_array($set) && isset($set['weight'])) {
+                    $totalWeight += floatval($set['weight']);
+                } else if (is_numeric($set)) {
+                    $totalWeight += floatval($set);
+                } else if (is_string($set)) {
+                    // Mēģinām iegūt skaitli no stringa
+                    preg_match('/\d+(\.\d+)?/', $set, $matches);
+                    if (!empty($matches)) {
+                        $totalWeight += floatval($matches[0]);
+                    }
                 }
             }
         }
-    } else {
-        // 3. Ja nav workout logs, mēģinām no WorkoutSessions
-        $sessions = WorkoutSession::where('user_id', $user->id)
-            ->where('status', 'completed')
-            ->where(function($query) use ($weekStart, $weekEnd) {
-                // Izmanto ended_at vai created_at
-                $query->whereBetween('ended_at', [$weekStart, $weekEnd])
-                      ->orWhereBetween('created_at', [$weekStart, $weekEnd]);
-            })
-            ->get();
         
-        \Log::info('WorkoutSessions found: ' . $sessions->count());
-        
-        foreach ($sessions as $session) {
-            // Izvēlamies datumu
-            $dateToUse = $session->ended_at ?? $session->created_at;
-            if (!$dateToUse) continue;
-            
-            $englishDay = $dateToUse->format('l');
-            $latvianDay = $dayMapping[$englishDay] ?? null;
-            
-            if (!$latvianDay) continue;
-            
-            \Log::info('Session ID: ' . $session->id . ', Date: ' . $dateToUse . ', Day: ' . $latvianDay);
-            
-            $sessionWeight = $this->calculateSessionWeight($session);
-            $weightStats[$latvianDay]['totalWeight'] += $sessionWeight;
-            if ($sessionWeight > 0) {
-                $weightStats[$latvianDay]['exercises']++;
-            }
-        }
+        return $totalWeight;
     }
-    
-    \Log::info('Final weight stats: ', $weightStats);
-    \Log::info('=== END GETTING WEIGHT STATS ===');
-    
-    return $weightStats;
-}
-
-private function calculateSessionWeight($session)
-{
-    $totalWeight = 0;
-    
-    $session->load(['exercises' => function($query) {
-        $query->with('exercise');
-    }]);
-    
-    foreach ($session->exercises as $sessionExercise) {
-        $weights = $sessionExercise->weights_used;
-        
-        if (empty($weights) || !is_array($weights)) {
-            continue;
-        }
-        
-        foreach ($weights as $set) {
-            if (is_array($set) && isset($set['weight'])) {
-                $totalWeight += floatval($set['weight']);
-            } else if (is_numeric($set)) {
-                $totalWeight += floatval($set);
-            } else if (is_string($set)) {
-                // Mēģinām iegūt skaitli no stringa
-                preg_match('/\d+(\.\d+)?/', $set, $matches);
-                if (!empty($matches)) {
-                    $totalWeight += floatval($matches[0]);
-                }
-            }
-        }
-    }
-    
-    return $totalWeight;
-}
-   
 }

@@ -19,6 +19,9 @@ return new class extends Migration
             $table->date('achieved_at');
             $table->timestamps();
         });
+        Schema::table('personal_records', function (Blueprint $table) {
+    $table->foreignId('workout_log_id')->nullable()->constrained('workout_logs')->onDelete('set null');
+});
     }
     
     public function down()

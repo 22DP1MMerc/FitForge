@@ -330,21 +330,27 @@ public function completeWorkout(Request $request, WorkoutSession $workoutSession
 }
     
     // Atcelt treniņu
-    public function cancelWorkout(WorkoutSession $workoutSession)
-    {
-        $user = Auth::user();
-        
-        if ($workoutSession->user_id !== $user->id) {
-            abort(403);
-        }
-        
-        $workoutSession->update([
-            'status' => 'cancelled',
-            'completed_at' => Carbon::now(),
-        ]);
-        
-        return redirect()->route('dashboard')->with('info', 'Treniņš atcelts');
+public function cancelWorkout(WorkoutSession $workoutSession)
+{
+    $user = Auth::user();
+    
+    if ($workoutSession->user_id !== $user->id) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Unauthorized'
+        ], 403);
     }
+    
+    $workoutSession->update([
+        'status' => 'cancelled',
+        'ended_at' => Carbon::now(), // Changed from 'completed_at' to 'ended_at' to match your schema
+    ]);
+    
+    return response()->json([
+        'success' => true,
+        'message' => 'Treniņš atcelts'
+    ]);
+}
     
     // Sākt treniņu (GET maršruts)
     public function start(Routine $routine)

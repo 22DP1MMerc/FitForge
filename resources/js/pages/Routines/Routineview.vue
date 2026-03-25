@@ -6,16 +6,19 @@
             <div class="routines-container">
                 <div class="routines-content">
                     <div class="routines-header">
-                        <h1>Mana rutīnas</h1>
+                        <h1>Manas rutīnas</h1>
                         <div class="header-actions">
-                            <Link href="/routines/create" class="create-button">
+                            <Link v-if="isAuthenticated" href="/routines/create" class="create-button">
                             Izveidot jaunu rutīnu
                             </Link>
+                            <div v-else class="auth-required-message">
+                                Pierakstieties, lai izveidotu rutīnas
+                            </div>
                         </div>
                     </div>
 
                     <!-- Aktīvās rutīnas indikators -->
-                    <div v-if="activeRoutine" class="active-routine-banner">
+                    <div v-if="isAuthenticated && activeRoutine" class="active-routine-banner">
                         <div class="active-routine-content">
                             <div class="routine-info">
                                 <h3>🏋️ Aktīvā rutīna</h3>
@@ -38,14 +41,11 @@
                                 <div class="routine-content">
                                     <div class="routine-header">
                                         <h2>{{ routine.name }}</h2>
-                                        <div v-if="routine.id === activeRoutine?.id" class="active-badge">
+                                        <div v-if="isAuthenticated && routine.id === activeRoutine?.id" class="active-badge">
                                             Aktīvā
                                         </div>
                                     </div>
                                     <p class="routine-description">{{ routine.description || 'Nav apraksta' }}</p>
-
-                                    <!-- Nedēļas dienu pārskats -->
-                                
 
                                     <div class="routine-meta">
                                         <span class="exercise-count">{{ getTotalExercisesCount(routine) }} vingrinājumi</span>
@@ -56,10 +56,16 @@
                                         <button @click="viewRoutineDetails(routine)" class="view-btn">
                                             👁️ Skatīt
                                         </button>
-                                        <button @click="startRoutineWorkout(routine)" class="start-btn">
+
+                                        <button v-if="isAuthenticated" @click="editRoutine(routine)" class="edit-btn">
+                                            ✏️ Rediģēt
+                                        </button>
+
+                                        <button v-if="isAuthenticated" @click="startRoutineWorkout(routine)" class="start-btn">
                                             ▶️ Sākt treniņu
                                         </button>
-                                        <button @click="setAsActiveRoutine(routine)"
+                                        <button v-if="isAuthenticated"
+                                                @click="setAsActiveRoutine(routine)"
                                                 :class="['set-active-btn', routine.id === activeRoutine?.id ? 'is-active' : '']">
                                             {{ routine.id === activeRoutine?.id ? '✅ Aktīvā' : '⭐ Iestatīt' }}
                                         </button>
@@ -72,9 +78,15 @@
                                     🏋️
                                 </div>
                                 <p>Jums vēl nav izveidota neviena rutīna.</p>
-                                <Link href="/routines/create" class="create-button">
+                                <Link v-if="isAuthenticated" href="/routines/create" class="create-button">
                                 Izveidot pirmo rutīnu
                                 </Link>
+                                <div v-else class="auth-message">
+                                    <p>Pierakstieties, lai izveidotu rutīnas!</p>
+                                    <Link href="/login" class="login-btn">
+                                    Pierakstīties
+                                    </Link>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -110,7 +122,7 @@
                                         {{ selectedRoutine.is_public ? 'Publiska' : 'Privāta' }}
                                     </span>
                                 </div>
-                                <div v-if="selectedRoutine.id === activeRoutine?.id" class="info-item">
+                                <div v-if="isAuthenticated && selectedRoutine.id === activeRoutine?.id" class="info-item">
                                     <span class="info-label">Status:</span>
                                     <span class="info-value active">⭐ Aktīvā</span>
                                 </div>
@@ -174,10 +186,16 @@
                     </div>
 
                     <div class="modal-footer">
-                        <button @click="startRoutineWorkout(selectedRoutine)" class="btn btn-primary">
+                        <button v-if="isAuthenticated" @click="startRoutineWorkout(selectedRoutine)" class="btn btn-primary">
                             ▶️ Sākt treniņu
                         </button>
-                        <button @click="setAsActiveRoutine(selectedRoutine)"
+
+                        <button v-if="isAuthenticated" @click="editRoutine(selectedRoutine)" class="btn btn-warning">
+                            ✏️ Rediģēt
+                        </button>
+
+                        <button v-if="isAuthenticated"
+                                @click="setAsActiveRoutine(selectedRoutine)"
                                 :class="['btn', selectedRoutine.id === activeRoutine?.id ? 'btn-success' : 'btn-secondary']">
                             {{ selectedRoutine.id === activeRoutine?.id ? '✅ Aktīvā' : '⭐ Iestatīt kā aktīvo' }}
                         </button>
@@ -194,15 +212,20 @@
 <script setup>
     import AppLayout from '@/Layouts/AppLayout.vue';
     import { Head, Link, router } from '@inertiajs/vue3';
-    import { ref, onMounted, onUnmounted } from 'vue';
+    import { ref, onMounted, onUnmounted, computed } from 'vue';
     import axios from 'axios';
 
     const props = defineProps({
         routines: Array,
+        auth: Object,
     });
 
     const activeRoutine = ref(null);
     const selectedRoutine = ref(null);
+
+    const isAuthenticated = computed(() => {
+        return props.auth && props.auth.user;
+    });
 
     const dayNames = {
         1: 'Pirmdiena',
@@ -247,14 +270,33 @@
         return uniqueExerciseIds.size;
     };
 
+    const editRoutine = (routine) => {
+        if (!isAuthenticated.value) {
+            alert('Lūdzu, pierakstieties, lai rediģētu rutīnas!');
+            return;
+        }
+
+        console.log('Editing routine:', routine.id);
+
+        // Aizveram modālu, ja tas ir atvērts
+        if (selectedRoutine.value?.id === routine.id) {
+            closeModal();
+        }
+
+        // Pārejam uz rediģēšanas lapu
+        router.visit(`/routines/${routine.id}/edit`);
+    };
+
     onMounted(() => {
-        const saved = localStorage.getItem('activeRoutine');
-        if (saved) {
-            try {
-                activeRoutine.value = JSON.parse(saved);
-            } catch (e) {
-                console.error('Error parsing active routine:', e);
-                localStorage.removeItem('activeRoutine');
+        if (isAuthenticated.value) {
+            const saved = localStorage.getItem('activeRoutine');
+            if (saved) {
+                try {
+                    activeRoutine.value = JSON.parse(saved);
+                } catch (e) {
+                    console.error('Error parsing active routine:', e);
+                    localStorage.removeItem('activeRoutine');
+                }
             }
         }
 
@@ -265,8 +307,12 @@
         document.removeEventListener('keydown', handleEscape);
     });
 
-    // MyRoutines.vue - setAsActiveRoutine funkcijā
     const setAsActiveRoutine = async (routine) => {
+        if (!isAuthenticated.value) {
+            alert('Lūdzu, pierakstieties, lai iestatītu aktīvo rutīnu!');
+            return;
+        }
+
         try {
             console.log('Setting active routine:', routine.id, routine.name);
 
@@ -322,6 +368,8 @@
     };
 
     const clearActiveRoutine = () => {
+        if (!isAuthenticated.value) return;
+
         localStorage.removeItem('activeRoutine');
         activeRoutine.value = null;
         localStorage.setItem('routineChanged', 'true');
@@ -338,6 +386,11 @@
     };
 
     const startRoutineWorkout = async (routine) => {
+        if (!isAuthenticated.value) {
+            alert('Lūdzu, pierakstieties, lai sāktu treniņu!');
+            return;
+        }
+
         try {
             // 1. Nosakām šodienas dienas numuru
             const today = new Date();
@@ -405,10 +458,6 @@
         }
     };
 
-
-        
-    
-
     const handleEscape = (e) => {
         if (e.key === 'Escape' && selectedRoutine.value) {
             closeModal();
@@ -417,7 +466,6 @@
 </script>
 
 <style scoped>
-
     .week-schedule {
         display: grid;
         grid-template-columns: repeat(7, 1fr);
@@ -480,12 +528,125 @@
         border-bottom: 1px solid #e2e8f0;
     }
 
-        .day-header h4 {
-            font-size: 1rem;
-            font-weight: 600;
-            color: #1e293b;
-            margin: 0;
+    .edit-btn {
+        background: #f59e0b;
+        color: white;
+        flex: 1;
+        min-width: 100px;
+        padding: 0.625rem 1rem;
+        border-radius: 0.625rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        border: none;
+        cursor: pointer;
+        transition: all 0.2s;
+        text-align: center;
+    }
+
+        .edit-btn:hover {
+            background: #d97706;
+            transform: translateY(-1px);
         }
+
+    .delete-btn {
+        background: #ef4444;
+        color: white;
+        flex: 1;
+        min-width: 100px;
+        padding: 0.625rem 1rem;
+        border-radius: 0.625rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        border: none;
+        cursor: pointer;
+        transition: all 0.2s;
+        text-align: center;
+    }
+
+        .delete-btn:hover {
+            background: #dc2626;
+            transform: translateY(-1px);
+        }
+
+    .delete-modal {
+        max-width: 500px;
+    }
+
+    .warning-text {
+        color: #dc2626;
+        font-weight: 600;
+        margin-top: 1rem;
+    }
+
+    .btn-danger {
+        background: #dc2626;
+        color: white;
+    }
+
+        .btn-danger:hover {
+            background: #b91c1c;
+        }
+
+    .btn-warning {
+        background: #f59e0b;
+        color: white;
+    }
+
+        .btn-warning:hover {
+            background: #d97706;
+        }
+
+    .auth-required-message {
+        color: #64748b;
+        font-size: 0.875rem;
+        padding: 0.75rem 1.5rem;
+        background: #f1f5f9;
+        border-radius: 0.75rem;
+        border: 1px solid #e2e8f0;
+    }
+
+    .auth-message {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .login-btn {
+        background: #3b82f6;
+        color: white;
+        padding: 0.75rem 1.5rem;
+        border-radius: 0.75rem;
+        text-decoration: none;
+        font-weight: 600;
+        transition: all 0.2s;
+    }
+
+        .login-btn:hover {
+            background: #2563eb;
+            transform: translateY(-1px);
+        }
+
+    @media (max-width: 768px) {
+        .routine-actions {
+            flex-direction: column;
+        }
+
+        .view-btn,
+        .edit-btn,
+        .delete-btn,
+        .start-btn,
+        .set-active-btn {
+            width: 100%;
+        }
+    }
+
+    .day-header h4 {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #1e293b;
+        margin: 0;
+    }
 
     .day-count {
         background: #3b82f6;
@@ -512,7 +673,6 @@
         border: 1px dashed #e2e8f0;
     }
 
-    /* Responsive */
     @media (max-width: 768px) {
         .week-schedule {
             grid-template-columns: repeat(4, 1fr);

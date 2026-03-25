@@ -11,99 +11,84 @@ class RoutineSeeder extends Seeder
 {
     public function run()
     {
-        // Get or create a test user
         $user = User::firstOrCreate([
             'email' => 'test@example.com'
         ], [
-            'name' => 'Test User',
+            'name' => 'Testa Lietotājs',
             'password' => bcrypt('password')
         ]);
 
-        // Get some exercises
-        $exercises = Exercise::limit(10)->get();
-        
+        $exercises = Exercise::limit(15)->get();
+
         if ($exercises->isEmpty()) {
-            // Create some exercises if none exist
-            $exercises = Exercise::factory()->count(10)->create();
+            $exercises = Exercise::factory()->count(15)->create();
         }
 
-        // Create sample routines
+        // Routines
         $routine1 = Routine::create([
-            'name' => 'Beginner Full Body Workout',
-            'description' => 'A simple full-body routine for beginners',
+            'name' => 'Iesācēju Pilna Ķermeņa Treniņš',
+            'description' => 'Vienkāršs treniņš visam ķermenim iesācējiem',
             'user_id' => $user->id,
             'is_public' => true
         ]);
 
         $routine2 = Routine::create([
-            'name' => 'Advanced Push/Pull/Legs',
-            'description' => '6-day PPL split for advanced lifters',
+            'name' => 'Push Pull Legs Advanced',
+            'description' => '6 dienu sadalījums pieredzējušiem sportistiem',
             'user_id' => $user->id,
             'is_public' => true
         ]);
 
         $routine3 = Routine::create([
-            'name' => 'My Personal Routine',
-            'description' => 'Custom routine for my specific goals',
+            'name' => 'Mans Personīgais Plāns',
+            'description' => 'Individuāls treniņš maniem mērķiem',
             'user_id' => $user->id,
             'is_public' => false
         ]);
 
-         $routine4 = Routine::create([
-            'name' => 'Hypertrophy Split',
-            'description' => '5-day hypertrophy program focusing on muscle growth.',
+        $routine4 = Routine::create([
+            'name' => 'Hipertrofijas Programma',
+            'description' => 'Muskuļu masas palielināšanai',
             'user_id' => $user->id,
             'is_public' => true
         ]);
 
         $routine5 = Routine::create([
-            'name' => 'Cardio & Core',
-            'description' => 'Alternating cardio and core for fat loss and endurance.',
+            'name' => 'Kardio un Korsete',
+            'description' => 'Tauku dedzināšanai un izturībai',
             'user_id' => $user->id,
             'is_public' => false
         ]);
 
-        $routine6 = Routine::create([
-            'name' => 'Push/Pull Split',
-            'description' => 'Classic push/pull split for balanced upper body development.',
-            'user_id' => $user->id,
-            'is_public' => true
-        ]);
+        // Attach exercises (no rest_seconds)
 
-        // Attach exercises to routines with pivot data
         $routine1->exercises()->attach([
-            $exercises[0]->id => ['day_number' => 1, 'sets' => 3, 'reps' => 10, 'rest_seconds' => 60],
-            $exercises[1]->id => ['day_number' => 1, 'sets' => 3, 'reps' => 12, 'rest_seconds' => 45],
-            $exercises[2]->id => ['day_number' => 2, 'sets' => 4, 'reps' => 8, 'rest_seconds' => 90],
+            $exercises[0]->id => ['day_number' => 1, 'sets' => 3, 'reps' => 10],
+            $exercises[1]->id => ['day_number' => 1, 'sets' => 3, 'reps' => 12],
+            $exercises[2]->id => ['day_number' => 2, 'sets' => 3, 'reps' => 8],
         ]);
 
         $routine2->exercises()->attach([
-            $exercises[3]->id => ['day_number' => 1, 'sets' => 4, 'reps' => 6, 'rest_seconds' => 120],
-            $exercises[4]->id => ['day_number' => 1, 'sets' => 3, 'reps' => 8, 'rest_seconds' => 90],
-            $exercises[5]->id => ['day_number' => 2, 'sets' => 5, 'reps' => 5, 'rest_seconds' => 180],
+            $exercises[3]->id => ['day_number' => 1, 'sets' => 4, 'reps' => 6],
+            $exercises[4]->id => ['day_number' => 2, 'sets' => 4, 'reps' => 8],
+            $exercises[5]->id => ['day_number' => 3, 'sets' => 5, 'reps' => 5],
         ]);
 
         $routine3->exercises()->attach([
-            $exercises[6]->id => ['day_number' => 1, 'sets' => 3, 'reps' => 10, 'rest_seconds' => 60],
-            $exercises[7]->id => ['day_number' => 1, 'sets' => 3, 'reps' => 10, 'rest_seconds' => 60],
+            $exercises[6]->id => ['day_number' => 1, 'sets' => 3, 'reps' => 10],
+            $exercises[7]->id => ['day_number' => 1, 'sets' => 3, 'reps' => 10],
         ]);
 
         $routine4->exercises()->attach([
-            $exercises[0]->id => ['day_number' => 1, 'sets' => 4, 'reps' => 12, 'rest_seconds' => 60],
-            $exercises[1]->id => ['day_number' => 2, 'sets' => 4, 'reps' => 10, 'rest_seconds' => 60],
-            $exercises[2]->id => ['day_number' => 3, 'sets' => 4, 'reps' => 8, 'rest_seconds' => 90],
+            $exercises[8]->id => ['day_number' => 1, 'sets' => 4, 'reps' => 12],
+            $exercises[9]->id => ['day_number' => 2, 'sets' => 4, 'reps' => 10],
+            $exercises[10]->id => ['day_number' => 3, 'sets' => 4, 'reps' => 8],
         ]);
 
         $routine5->exercises()->attach([
-            $exercises[3]->id => ['day_number' => 1, 'sets' => 3, 'reps' => 30, 'rest_seconds' => 15],
-            $exercises[4]->id => ['day_number' => 1, 'sets' => 3, 'reps' => 20, 'rest_seconds' => 20],
-            $exercises[5]->id => ['day_number' => 2, 'sets' => 4, 'reps' => 15, 'rest_seconds' => 30],
-        ]);
-
-        $routine6->exercises()->attach([
-            $exercises[6]->id => ['day_number' => 1, 'sets' => 5, 'reps' => 6, 'rest_seconds' => 90], // Push day
-            $exercises[7]->id => ['day_number' => 2, 'sets' => 5, 'reps' => 6, 'rest_seconds' => 90], // Pull day
-            $exercises[8]->id => ['day_number' => 2, 'sets' => 4, 'reps' => 10, 'rest_seconds' => 60],
+            $exercises[11]->id => ['day_number' => 1, 'sets' => 3, 'reps' => 25],
+            $exercises[12]->id => ['day_number' => 1, 'sets' => 3, 'reps' => 20],
+            $exercises[13]->id => ['day_number' => 2, 'sets' => 4, 'reps' => 15],
         ]);
     }
 }

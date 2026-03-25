@@ -18,6 +18,14 @@
                         Treniņu vēsture
                         </Link>
                     </li>
+                    <li>
+                        <Link v-if="$page.props.auth.user?.is_admin"
+                              :href="route('admin.users')"
+                              class="nav-link">
+                        <Users class="nav-icon" />
+                        Admin Panel
+                        </Link>
+                    </li>
                 </ul>
 
                 <div class="nav-links-right" v-if="user">

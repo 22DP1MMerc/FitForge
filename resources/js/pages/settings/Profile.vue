@@ -12,6 +12,34 @@
     import AppLayout from '@/layouts/AppLayout.vue';
     import axios from 'axios';
 
+    // Configure axios to send cookies with requests
+    axios.defaults.withCredentials = true;
+    axios.defaults.baseURL = 'http://localhost:8500';
+
+    interface Goal {
+        id: number;
+        user_id: number;
+        title: string;
+        description: string | null;
+        type: 'workout' | 'weight' | 'strength' | 'endurance';
+        target_value: number;
+        current_value: number;
+        unit: string | null;
+        deadline: string | null;
+        completed: boolean;
+        created_at: string;
+        updated_at: string;
+    }
+
+    interface GoalForm {
+        title: string;
+        description: string;
+        type: 'workout' | 'weight' | 'strength' | 'endurance';
+        target_value: string;
+        unit: string;
+        deadline: string;
+    }
+
     interface Props {
         mustVerifyEmail: boolean;
         status?: string;
@@ -22,6 +50,7 @@
     const page = usePage();
     const user = page.props.auth.user;
 
+    // Profile form
     const form = useForm({
         name: user.name,
         email: user.email,
@@ -33,11 +62,30 @@
         });
     };
 
-    // Mērķu funkcionalitāte
-    const goals = ref<any[]>([]);
+    // Password form
+    const passwordForm = useForm({
+        current_password: '',
+        password: '',
+        password_confirmation: '',
+    });
+
+    const updatePassword = () => {
+        passwordForm.put(route('password.update'), {
+            preserveScroll: true,
+            onSuccess: () => {
+                passwordForm.reset('current_password', 'password', 'password_confirmation');
+            },
+        });
+    };
+
+    // Goals functionality
+    const goals = ref<Goal[]>([]);
     const loading = ref(false);
     const showGoalForm = ref(false);
-    const goalForm = ref({
+    const processingGoalId = ref<number | null>(null);
+    const errorMessage = ref<string | null>(null);
+
+    const goalForm = ref<GoalForm>({
         title: '',
         description: '',
         type: 'workout',
@@ -46,52 +94,141 @@
         deadline: ''
     });
 
-    // Ielādē mērķus
+    // Load goals
     const loadGoals = async () => {
         try {
             loading.value = true;
+            errorMessage.value = null;
             const response = await axios.get('/api/goals');
             goals.value = response.data;
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error loading goals:', error);
+            errorMessage.value = 'Neizdevās ielādēt mērķus. Lūdzu, mēģiniet vēlreiz.';
+            if (error.response) {
+                console.error('Error response:', error.response.data);
+                console.error('Error status:', error.response.status);
+            }
         } finally {
             loading.value = false;
         }
     };
 
-    // Izveidot jaunu mērķi
+    // Create new goal
     const createGoal = async () => {
         try {
-            await axios.post('/api/goals', {
-                ...goalForm.value,
-                target_value: parseFloat(goalForm.value.target_value)
-            });
+            loading.value = true;
+            errorMessage.value = null;
+
+            // Validate form data before sending
+            if (!goalForm.value.title.trim()) {
+                alert('Lūdzu, ievadiet mērķa nosaukumu');
+                return;
+            }
+
+            if (!goalForm.value.target_value || parseFloat(goalForm.value.target_value) <= 0) {
+                alert('Lūdzu, ievadiet derīgu mērķa vērtību');
+                return;
+            }
+
+            const payload = {
+                title: goalForm.value.title.trim(),
+                description: goalForm.value.description.trim() || null,
+                type: goalForm.value.type,
+                target_value: parseFloat(goalForm.value.target_value),
+                unit: goalForm.value.unit.trim() || null,
+                deadline: goalForm.value.deadline || null
+            };
+
+            console.log('Sending payload:', payload);
+
+            const response = await axios.post('/api/goals', payload);
+            console.log('Response:', response.data);
+
             await loadGoals();
             showGoalForm.value = false;
             resetGoalForm();
-        } catch (error) {
+
+            alert('Mērķis veiksmīgi izveidots!');
+
+        } catch (error: any) {
             console.error('Error creating goal:', error);
+
+            if (error.response) {
+                console.error('Error response data:', error.response.data);
+                console.error('Error response status:', error.response.status);
+
+                if (error.response.data?.errors) {
+                    // Show validation errors
+                    const errors = error.response.data.errors;
+                    let errorMessage = 'Kļūdas:\n';
+                    Object.keys(errors).forEach(key => {
+                        errorMessage += `${key}: ${errors[key].join(', ')}\n`;
+                    });
+                    alert(errorMessage);
+                } else if (error.response.data?.error) {
+                    alert('Kļūda: ' + error.response.data.error);
+                } else {
+                    alert('Neizdevās izveidot mērķi. Lūdzu, mēģiniet vēlreiz.');
+                }
+            } else {
+                alert('Neizdevās izveidot mērķi. Lūdzu, pārbaudiet savienojumu.');
+            }
+        } finally {
+            loading.value = false;
         }
     };
 
-    // Atjaunināt mērķi
-    const updateGoal = async (goalId: number, updates: any) => {
+    // Toggle goal completion status
+    const toggleGoalCompletion = async (goalId: number) => {
+        const goal = goals.value.find(g => g.id === goalId);
+        if (!goal) return;
+
         try {
-            await axios.put(`/api/goals/${goalId}`, updates);
+            processingGoalId.value = goalId;
+            errorMessage.value = null;
+
+            const response = await axios.put(`/api/goals/${goalId}`, {
+                completed: !goal.completed
+            });
+
+            console.log('Toggle completion response:', response.data);
+
+            // Update local state immediately for better UX
+            goal.completed = !goal.completed;
+
+            // Optionally reload from server to ensure sync
             await loadGoals();
-        } catch (error) {
-            console.error('Error updating goal:', error);
+
+        } catch (error: any) {
+            console.error('Error toggling goal completion:', error);
+            if (error.response) {
+                console.error('Error response:', error.response.data);
+            }
+            alert('Neizdevās atjaunināt mērķa statusu');
+        } finally {
+            processingGoalId.value = null;
         }
     };
 
-    // Dzēst mērķi
+    // Delete goal
     const deleteGoal = async (goalId: number) => {
         if (confirm('Vai tiešām vēlaties dzēst šo mērķi?')) {
             try {
+                processingGoalId.value = goalId;
+                errorMessage.value = null;
+
                 await axios.delete(`/api/goals/${goalId}`);
                 await loadGoals();
-            } catch (error) {
+
+                alert('Mērķis veiksmīgi dzēsts!');
+            } catch (error: any) {
                 console.error('Error deleting goal:', error);
+                if (error.response) {
+                    console.error('Error response:', error.response.data);
+                }
+                alert('Neizdevās dzēst mērķi');
+            } finally {
+                processingGoalId.value = null;
             }
         }
     };
@@ -107,13 +244,12 @@
         };
     };
 
-    // Aprēķina progresa procentu
-    const calculateProgress = (goal: any) => {
-        if (!goal.target_value || goal.target_value === 0) return 0;
-        return Math.min(Math.round((goal.current_value / goal.target_value) * 100), 100);
+    // Check if goal is achieved based on target value
+    const isGoalAchieved = (goal: Goal) => {
+        return goal.current_value >= goal.target_value;
     };
 
-    // Atgriež mērķa tipa ikonu
+    // Get goal type icon
     const getGoalTypeIcon = (type: string) => {
         switch (type) {
             case 'workout': return '💪';
@@ -124,7 +260,7 @@
         }
     };
 
-    // Atgriež mērķa tipa nosaukumu
+    // Get goal type name
     const getGoalTypeName = (type: string) => {
         switch (type) {
             case 'workout': return 'Treniņš';
@@ -135,7 +271,7 @@
         }
     };
 
-    // Atgriež mērķa tipa krāsu
+    // Get goal type color
     const getGoalTypeColor = (type: string) => {
         switch (type) {
             case 'workout': return '#3b82f6';
@@ -146,6 +282,7 @@
         }
     };
 
+    // Load goals when component is mounted
     onMounted(() => {
         loadGoals();
     });
@@ -168,7 +305,7 @@
                 </div>
 
                 <div class="content-grid">
-                    <!-- Left Column - Profile Info & Goals -->
+                    <!-- Left Column -->
                     <div class="left-column">
                         <!-- Profile Information Card -->
                         <Card class="profile-card">
@@ -286,6 +423,98 @@
                             </CardContent>
                         </Card>
 
+                        <!-- Password Update Card -->
+                        <Card class="password-card">
+                            <CardHeader class="card-header">
+                                <div class="header-icon-wrapper">
+                                    <div class="icon-circle password-icon">
+                                        <ShieldAlert class="icon" />
+                                    </div>
+                                    <div>
+                                        <CardTitle class="card-title">Paroles maiņa</CardTitle>
+                                        <CardDescription class="card-description">
+                                            Atjaunini savu paroli, lai nodrošinātu konta drošību
+                                        </CardDescription>
+                                    </div>
+                                </div>
+                            </CardHeader>
+
+                            <CardContent class="card-content">
+                                <form @submit.prevent="updatePassword">
+                                    <div class="form-fields">
+                                        <div class="form-field">
+                                            <Label for="current_password">Pašreizējā parole</Label>
+                                            <div class="input-wrapper">
+                                                <Input id="current_password"
+                                                       type="password"
+                                                       v-model="passwordForm.current_password"
+                                                       required
+                                                       placeholder="Ievadi pašreizējo paroli"
+                                                       :class="['custom-input', passwordForm.errors.current_password ? 'input-error' : '']" />
+                                            </div>
+                                            <InputError :message="passwordForm.errors.current_password" />
+                                        </div>
+
+                                        <div class="form-field">
+                                            <Label for="new_password">Jaunā parole</Label>
+                                            <div class="input-wrapper">
+                                                <Input id="new_password"
+                                                       type="password"
+                                                       v-model="passwordForm.password"
+                                                       required
+                                                       placeholder="Ievadi jauno paroli"
+                                                       :class="['custom-input', passwordForm.errors.password ? 'input-error' : '']" />
+                                            </div>
+                                            <InputError :message="passwordForm.errors.password" />
+                                        </div>
+
+                                        <div class="form-field">
+                                            <Label for="password_confirmation">Apstiprini jauno paroli</Label>
+                                            <div class="input-wrapper">
+                                                <Input id="password_confirmation"
+                                                       type="password"
+                                                       v-model="passwordForm.password_confirmation"
+                                                       required
+                                                       placeholder="Apstiprini jauno paroli"
+                                                       :class="['custom-input', passwordForm.errors.password_confirmation ? 'input-error' : '']" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="form-actions">
+                                        <Button type="submit"
+                                                :disabled="passwordForm.processing"
+                                                class="submit-button">
+                                            <span v-if="passwordForm.processing" class="loading-text">
+                                                <svg class="loading-spinner" viewBox="0 0 24 24">
+                                                    <circle class="spinner-background" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none" />
+                                                    <path class="spinner-foreground" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                                </svg>
+                                                Atjaunina...
+                                            </span>
+                                            <span v-else>
+                                                <ShieldAlert class="button-icon" />
+                                                Mainīt paroli
+                                            </span>
+                                        </Button>
+
+                                        <Transition enter-active-class="fade-in"
+                                                    enter-from-class="fade-start"
+                                                    enter-to-class="fade-end"
+                                                    leave-active-class="fade-out"
+                                                    leave-from-class="fade-end"
+                                                    leave-to-class="fade-start">
+                                            <p v-show="passwordForm.recentlySuccessful"
+                                               class="success-message">
+                                                <CheckCircle class="success-icon-small" />
+                                                Parole veiksmīgi nomainīta!
+                                            </p>
+                                        </Transition>
+                                    </div>
+                                </form>
+                            </CardContent>
+                        </Card>
+
                         <!-- Goals Card -->
                         <Card class="goals-card">
                             <CardHeader class="card-header">
@@ -298,7 +527,7 @@
                                             Mani mērķi
                                         </CardTitle>
                                         <CardDescription class="card-description">
-                                            Sekoji saviem fitnesa mērķiem
+                                            Izvirzi un sasniedz savus fitnesa mērķus
                                         </CardDescription>
                                     </div>
                                 </div>
@@ -318,12 +547,12 @@
                                         <div class="form-field">
                                             <Label class="field-label">Mērķa nosaukums</Label>
                                             <Input v-model="goalForm.title"
-                                                   placeholder="Piemēram: Sasniegt 100kg piegājienu"
+                                                   placeholder="Piemēram: Noskriet 5km"
                                                    class="custom-input" />
                                         </div>
 
                                         <div class="form-field">
-                                            <Label class="field-label">Apraksts</Label>
+                                            <Label class="field-label">Apraksts (neobligāts)</Label>
                                             <Input v-model="goalForm.description"
                                                    placeholder="Īss apraksts par mērķi..."
                                                    class="custom-input" />
@@ -343,7 +572,7 @@
                                             <div class="form-field">
                                                 <Label class="field-label">Mērvienība</Label>
                                                 <Input v-model="goalForm.unit"
-                                                       placeholder="kg, treniņi, dienas..."
+                                                       placeholder="kg, km, minūtes..."
                                                        class="custom-input" />
                                             </div>
                                         </div>
@@ -358,7 +587,7 @@
                                             </div>
 
                                             <div class="form-field">
-                                                <Label class="field-label">Termiņš</Label>
+                                                <Label class="field-label">Termiņš (neobligāts)</Label>
                                                 <Input v-model="goalForm.deadline"
                                                        type="date"
                                                        class="custom-input" />
@@ -368,15 +597,21 @@
 
                                     <div class="form-actions">
                                         <Button @click="createGoal"
+                                                :disabled="loading"
                                                 class="submit-button">
                                             <Plus class="button-icon" />
                                             Izveidot mērķi
                                         </Button>
-                                        <Button @click="showGoalForm = false"
+                                        <Button @click="showGoalForm = false; resetGoalForm()"
                                                 variant="outline">
                                             Atcelt
                                         </Button>
                                     </div>
+                                </div>
+
+                                <!-- Error Message -->
+                                <div v-if="errorMessage" class="error-message">
+                                    {{ errorMessage }}
                                 </div>
 
                                 <!-- Goals List -->
@@ -388,7 +623,7 @@
                                 <div v-else-if="goals.length === 0" class="empty-state">
                                     <Target class="empty-icon" />
                                     <p class="empty-title">Vēl nav mērķu</p>
-                                    <p class="empty-description">Izveido pirmo mērķi, lai sāktu progresu!</p>
+                                    <p class="empty-description">Izveido savu pirmo mērķi un sāc progresēt!</p>
                                     <Button @click="showGoalForm = true"
                                             class="submit-button">
                                         <Plus class="button-icon" />
@@ -405,11 +640,19 @@
                                                     <span class="goal-type-name">{{ getGoalTypeName(goal.type) }}</span>
                                                 </div>
                                                 <div class="goal-actions">
-                                                    <Button @click="updateGoal(goal.id, { completed: !goal.completed })"
+                                                    <Button @click="toggleGoalCompletion(goal.id)"
                                                             size="sm"
                                                             :variant="goal.completed ? 'default' : 'outline'"
-                                                            class="complete-btn">
-                                                        {{ goal.completed ? '✓ Pabeigts' : 'Atzīmēt' }}
+                                                            class="complete-btn"
+                                                            :disabled="processingGoalId === goal.id">
+                                                        {{ goal.completed ? '✓ Pabeigts' : 'Atzīmēt kā pabeigtu' }}
+                                                    </Button>
+                                                    <Button @click="deleteGoal(goal.id)"
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            class="delete-btn"
+                                                            :disabled="processingGoalId === goal.id">
+                                                        <Trash2 class="delete-icon" />
                                                     </Button>
                                                 </div>
                                             </div>
@@ -419,36 +662,21 @@
                                                 {{ goal.description }}
                                             </p>
 
-                                            <div class="goal-progress">
-                                                <div class="progress-header">
-                                                    <span class="progress-text">
-                                                        {{ goal.current_value || 0 }}/{{ goal.target_value }} {{ goal.unit }}
-                                                    </span>
-                                                    <span class="progress-percentage" :style="{ color: getGoalTypeColor(goal.type) }">
-                                                        {{ calculateProgress(goal) }}%
-                                                    </span>
+                                            <div class="goal-details">
+                                                <div class="goal-detail">
+                                                    <span class="detail-label">Mērķis:</span>
+                                                    <span class="detail-value">{{ goal.target_value }} {{ goal.unit }}</span>
                                                 </div>
-                                                <div class="progress-bar">
-                                                    <div class="progress-fill"
-                                                         :style="{
-                                                             width: calculateProgress(goal) + '%',
-                                                             backgroundColor: getGoalTypeColor(goal.type)
-                                                         }"
-                                                         :class="{ 'completed': goal.completed }"></div>
+                                                <div v-if="goal.deadline" class="goal-detail">
+                                                    <Calendar class="detail-icon" />
+                                                    <span class="detail-value">{{ new Date(goal.deadline).toLocaleDateString('lv-LV') }}</span>
                                                 </div>
                                             </div>
 
-                                            <div class="goal-footer">
-                                                <div v-if="goal.deadline" class="goal-deadline">
-                                                    <Calendar class="deadline-icon" />
-                                                    <span>Termiņš: {{ new Date(goal.deadline).toLocaleDateString('lv-LV') }}</span>
-                                                </div>
-                                                <Button @click="deleteGoal(goal.id)"
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        class="delete-btn">
-                                                    <Trash2 class="delete-icon" />
-                                                </Button>
+                                            <!-- Achievement Badge -->
+                                            <div v-if="goal.completed" class="achievement-badge">
+                                                <Award class="achievement-icon" />
+                                                <span>Sasniegts!</span>
                                             </div>
                                         </div>
                                     </div>
@@ -517,7 +745,7 @@
                                                 Math.round((goals.filter(g => g.completed).length / goals.length) * 100) : 0
                                                 }}%
                                             </div>
-                                            <div class="stat-label">Veiksmīgība</div>
+                                            <div class="stat-label">Pabeigtība</div>
                                         </div>
                                     </div>
                                 </div>
@@ -527,11 +755,11 @@
                                 <div class="quick-actions">
                                     <h4 class="actions-title">Ātrās darbības</h4>
                                     <div class="actions-buttons">
-                                        <Button variant="outline" class="action-button">
-                                            <Mail class="action-icon" />
-                                            Mainīt e-pastu
+                                        <Button variant="outline" class="action-button" @click="showGoalForm = true">
+                                            <Plus class="action-icon" />
+                                            Jauns mērķis
                                         </Button>
-                                        <Button variant="outline" class="action-button">
+                                        <Button variant="outline" class="action-button" @click="window.scrollTo({ top: document.querySelector('.password-card').offsetTop, behavior: 'smooth' })">
                                             <ShieldAlert class="action-icon" />
                                             Mainīt paroli
                                         </Button>
@@ -583,15 +811,15 @@
                                 <ul class="tips-list">
                                     <li class="tip-item">
                                         <div class="tip-bullet"></div>
-                                        <span>Izveido īstermiņa un ilgtermiņa mērķus</span>
+                                        <span>Izveido konkrētus un sasniedzamus mērķus</span>
                                     </li>
                                     <li class="tip-item">
                                         <div class="tip-bullet"></div>
-                                        <span>Regulāri atjaunini progresu</span>
+                                        <span>Atzīmē mērķi kā pabeigtu, kad to sasniedz</span>
                                     </li>
                                     <li class="tip-item">
                                         <div class="tip-bullet"></div>
-                                        <span>Celebrē katru sasniegumu</span>
+                                        <span>Regulāri pārskati savu progresu</span>
                                     </li>
                                 </ul>
                             </CardContent>
@@ -604,7 +832,89 @@
 </template>
 
 <style scoped>
-    /* Main Container - saglabā oriģinālo stilu */
+    /* Add password card styles */
+    .password-card {
+        border: 2px solid #e2e8f0;
+        border-radius: 1rem;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+        background: white;
+        overflow: hidden;
+    }
+
+    .password-icon {
+        background-color: #fff1f0;
+    }
+
+        .password-icon .icon {
+            color: #ef4444;
+        }
+
+    /* Goal details styling */
+    .goal-details {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        margin: 0.5rem 0;
+        padding: 0.5rem 0;
+        border-top: 1px dashed #e2e8f0;
+        border-bottom: 1px dashed #e2e8f0;
+    }
+
+    .goal-detail {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.9rem;
+    }
+
+    .detail-label {
+        color: #64748b;
+        font-weight: 500;
+    }
+
+    .detail-value {
+        color: #1e293b;
+        font-weight: 600;
+    }
+
+    .detail-icon {
+        height: 1rem;
+        width: 1rem;
+        color: #94a3b8;
+    }
+
+    /* Achievement badge */
+    .achievement-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        background: linear-gradient(135deg, #fbbf24, #f59e0b);
+        color: white;
+        border-radius: 9999px;
+        font-size: 0.875rem;
+        font-weight: 600;
+        margin-top: 0.5rem;
+        width: fit-content;
+    }
+
+    .achievement-icon {
+        height: 1.25rem;
+        width: 1.25rem;
+    }
+
+    /* Error message */
+    .error-message {
+        background-color: #fee2e2;
+        border: 1px solid #ef4444;
+        color: #b91c1c;
+        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+        margin-bottom: 1rem;
+        font-size: 0.875rem;
+    }
+
+    /* Rest of your existing styles remain the same */
     .profile-page-container {
         min-height: 100vh;
         background: linear-gradient(to bottom, #f8fafc, #f1f5f9);
@@ -616,7 +926,6 @@
         padding: 2rem 1rem;
     }
 
-    /* Header Section - saglabā oriģinālo */
     .header-section {
         margin-bottom: 2rem;
         text-align: center;
@@ -638,7 +947,6 @@
         line-height: 1.6;
     }
 
-    /* Content Grid - saglabā oriģinālo */
     .content-grid {
         display: grid;
         grid-template-columns: 1fr;
@@ -652,24 +960,13 @@
         }
     }
 
-    /* Left Column - saglabā oriģinālo */
     .left-column {
         display: flex;
         flex-direction: column;
         gap: 1.5rem;
     }
 
-    /* Profile Card - saglabā oriģinālo */
-    .profile-card {
-        border: 2px solid #e2e8f0;
-        border-radius: 1rem;
-        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
-        background: white;
-        overflow: hidden;
-    }
-
-    /* Goals Card - pielāgo oriģinālajam stiliam */
-    .goals-card {
+    .profile-card, .goals-card, .password-card {
         border: 2px solid #e2e8f0;
         border-radius: 1rem;
         box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
@@ -685,7 +982,6 @@
             color: #0ea5e9;
         }
 
-    /* Card Header - oriģinālais stils */
     .card-header {
         padding: 1.5rem 1.5rem 0.5rem;
         display: flex;
@@ -727,7 +1023,6 @@
         margin-top: 0.25rem;
     }
 
-    /* Add Goal Button - pielāgots oriģinālam */
     .add-goal-btn {
         display: flex;
         align-items: center;
@@ -746,7 +1041,6 @@
         padding: 1.5rem;
     }
 
-    /* Goal Form Section - pielāgots oriģinālam */
     .goal-form-section {
         background: #f8fafc;
         border: 1px solid #e2e8f0;
@@ -762,7 +1056,6 @@
         margin-bottom: 1rem;
     }
 
-    /* Select Input - pielāgots custom-input stilam */
     .select-input {
         width: 100%;
         padding: 0.5rem 1rem;
@@ -781,7 +1074,6 @@
             box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1);
         }
 
-    /* Loading State - pielāgots oriģinālam */
     .loading-state {
         display: flex;
         flex-direction: column;
@@ -801,7 +1093,6 @@
             margin-bottom: 1rem;
         }
 
-    /* Empty State - pielāgots oriģinālam */
     .empty-state {
         text-align: center;
         padding: 3rem 1rem;
@@ -828,7 +1119,6 @@
         font-size: 0.95rem;
     }
 
-    /* Goals List - pielāgots oriģinālajam */
     .goals-list {
         display: flex;
         flex-direction: column;
@@ -907,69 +1197,6 @@
         line-height: 1.5;
     }
 
-    /* Progress Bar - pielāgots oriģinālam */
-    .goal-progress {
-        margin: 0.5rem 0;
-    }
-
-    .progress-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 0.5rem;
-    }
-
-    .progress-text {
-        font-size: 0.875rem;
-        color: #475569;
-    }
-
-    .progress-percentage {
-        font-size: 0.875rem;
-        font-weight: 600;
-    }
-
-    .progress-bar {
-        height: 0.5rem;
-        background: #e2e8f0;
-        border-radius: 9999px;
-        overflow: hidden;
-    }
-
-    .progress-fill {
-        height: 100%;
-        border-radius: 9999px;
-        transition: width 0.3s ease;
-    }
-
-        .progress-fill.completed {
-            background: linear-gradient(90deg, #10b981, #34d399) !important;
-        }
-
-    /* Goal Footer */
-    .goal-footer {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-top: 0.5rem;
-        padding-top: 0.75rem;
-        border-top: 1px solid #e5e7eb;
-    }
-
-    .goal-deadline {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        font-size: 0.75rem;
-        color: #64748b;
-    }
-
-    .deadline-icon {
-        height: 0.875rem;
-        width: 0.875rem;
-        color: #9ca3af;
-    }
-
     .delete-btn {
         padding: 0.25rem;
         height: auto;
@@ -981,7 +1208,6 @@
         width: 0.875rem;
     }
 
-    /* Stats Card - pielāgots oriģinālajam Status Card */
     .goals-stats {
         margin-bottom: 1.5rem;
     }
@@ -1031,7 +1257,6 @@
         font-weight: 600;
     }
 
-    /* Recent Goals Card - pielāgots oriģinālajam */
     .recent-goals-card {
         background: white;
         border: 2px solid #e2e8f0;
@@ -1126,7 +1351,6 @@
             margin-top: 0.25rem;
         }
 
-    /* Status Badges - oriģinālais stils */
     .status-badge {
         padding: 0.25rem 0.75rem;
         border-radius: 9999px;
@@ -1149,13 +1373,11 @@
             color: #1e40af;
         }
 
-    /* Divider - oriģinālais stils */
     .divider {
         margin: 1.5rem 0;
         background-color: #e2e8f0;
     }
 
-    /* Tips Card - oriģinālais stils */
     .tips-card {
         background: linear-gradient(135deg, #ffedd5, #fed7aa);
         border: 2px solid #fdba74;
@@ -1202,7 +1424,6 @@
         line-height: 1.5;
     }
 
-    /* Custom Input - oriģinālais stils */
     .custom-input {
         width: 100%;
         padding: 0.5rem 1rem;
@@ -1221,7 +1442,10 @@
             box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1);
         }
 
-    /* Submit Button - oriģinālais stils */
+        .custom-input.input-error {
+            border-color: #ef4444;
+        }
+
     .submit-button {
         background: linear-gradient(135deg, #f97316, #ea580c);
         color: white;
@@ -1250,7 +1474,25 @@
             cursor: not-allowed;
         }
 
-    /* Animation */
+    .button-icon {
+        height: 1rem;
+        width: 1rem;
+    }
+
+    .success-message {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: #10b981;
+        font-size: 0.875rem;
+        margin-top: 0.5rem;
+    }
+
+    .success-icon-small {
+        height: 1rem;
+        width: 1rem;
+    }
+
     @keyframes spin {
         from {
             transform: rotate(0deg);
@@ -1261,7 +1503,6 @@
         }
     }
 
-    /* Responsive */
     @media (max-width: 768px) {
         .form-row {
             grid-template-columns: 1fr;
@@ -1278,10 +1519,9 @@
             justify-content: flex-start;
         }
 
-        .goal-footer {
+        .goal-details {
             flex-direction: column;
-            align-items: flex-start;
-            gap: 0.75rem;
+            gap: 0.5rem;
         }
 
         .stats-grid {

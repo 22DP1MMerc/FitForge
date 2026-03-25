@@ -10,6 +10,9 @@ use App\Http\Controllers\WorkoutController;
 use App\Http\Controllers\WorkoutLogController;
 use App\Models\Exercise;
 use App\Http\Controllers\Settings\ProfileController;
+use App\Http\Controllers\GoalController;
+use App\Http\Controllers\Admin\AdminController;
+
 
 Route::get('/', function () {
     if (Auth::check()) {
@@ -31,6 +34,16 @@ Route::resource('/exercises', ExerciseController::class);
 Route::prefix('api')->group(function () {
     Route::get('/exercises/filter', [ExerciseController::class, 'filter']);
     Route::post('/exercises', [ExerciseController::class, 'store']);
+
+
+});
+
+Route::prefix('api')->middleware('auth')->group(function () {
+    // Goals
+    Route::get('/goals', [GoalController::class, 'index']);
+    Route::post('/goals', [GoalController::class, 'store']);
+    Route::put('/goals/{goal}', [GoalController::class, 'update']);
+    Route::delete('/goals/{goal}', [GoalController::class, 'destroy']);
 });
 
 // Workout routes
@@ -207,6 +220,22 @@ Route::get('/api/workout-session/{workoutSession}', function ($workoutSessionId)
 Route::middleware('auth')->group(function () {
     Route::get('/routines/create', [RoutineController::class, 'create'])
         ->name('routines.create');
+
+    Route::get('/routines/my', [RoutineController::class, 'myRoutines'])
+        ->name('routines.my');
+
+    Route::post('/routines/{routine}/set-active', [RoutineController::class, 'setActive'])
+        ->name('routines.set-active');
+
+    Route::get('/routines/{routine}/edit', [RoutineController::class, 'edit'])->name('routines.edit');
+    Route::put('/routines/{routine}', [RoutineController::class, 'update'])->name('routines.update');
+
+    Route::get('/routines/{routine}/data', [RoutineController::class, 'getActiveRoutineData'])
+        ->name('routines.data');
+    
+    // Clear active routine API route
+    Route::post('/api/routines/clear-active', [RoutineController::class, 'clearActive'])
+        ->name('routines.clear-active');
 });
 
 Route::resource('routines', RoutineController::class)
@@ -216,6 +245,7 @@ Route::resource('routines', RoutineController::class)
         'store' => 'routines.store',
         'show' => 'routines.show',
     ]);
+
 
 // Custom public route
 Route::get('/routines/public', [RoutineController::class, 'publicIndex'])
@@ -246,6 +276,18 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/{workoutLog}', [WorkoutLogController::class, 'show'])->name('workout-logs.show');
         Route::delete('/{workoutLog}', [WorkoutLogController::class, 'destroy'])->name('workout-logs.destroy');
     });
+});
+
+Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(function () {
+    // User list
+    Route::get('/users', [AdminController::class, 'users'])->name('users');
+    
+    // User details
+    Route::get('/users/{user}', [AdminController::class, 'showUser'])->name('users.show');
+    
+    // User management actions
+    Route::post('/users/{user}/toggle-admin', [AdminController::class, 'toggleAdmin'])->name('users.toggle-admin');
+    Route::delete('/users/{user}', [AdminController::class, 'deleteUser'])->name('users.delete');
 });
 
 require __DIR__.'/settings.php';

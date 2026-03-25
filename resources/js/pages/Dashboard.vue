@@ -54,8 +54,6 @@
                     </div>
                 </div>
 
-
-
                 <!-- Ātri sākt treniņu sadaļa -->
                 <div class="quick-start-actions">
                     <h3>🚀 Ātri sākt treniņu</h3>
@@ -286,11 +284,9 @@
                                     <div class="routine-week-details">
                                         <div class="week-training-info">
                                             <span class="info-item">
-
                                                 {{ getRecommendedWorkouts() }} treniņi nedēļā
                                             </span>
                                             <span class="info-item">
-
                                                 Šodien: {{ getTodayExercises().length }} vingrinājumi
                                             </span>
                                         </div>
@@ -348,40 +344,82 @@
 
     const page = usePage();
     const user = computed(() => page.props.auth?.user || { name: 'Sportists' });
-    const activeRoutine = ref<any>(null);
 
-    // Ielādē aktīvo rutīnu no localStorage
-    const loadActiveRoutine = () => {
-        const savedRoutine = localStorage.getItem('activeRoutine');
-        if (savedRoutine) {
-            try {
-                activeRoutine.value = JSON.parse(savedRoutine);
-                console.log('Aktīvā rutīna ielādēta:', activeRoutine.value);
-            } catch (e) {
-                console.error('Kļūda ielādējot aktīvo rutīnu:', e);
-                activeRoutine.value = null;
+    // Definējam props - ĻOTI SVARĪGI!
+    const props = withDefaults(defineProps<{
+        stats?: object;
+        todayWorkout?: object | null;
+        recentActivities?: any[];
+        weeklySchedule?: any[];
+        weeklyWeightStats?: object;
+        activeRoutine?: object | null;
+        hasActiveWorkout?: boolean;
+    }>(), {
+        stats: () => ({
+            currentStreak: 0,
+            weeklyWorkouts: 0,
+            totalWorkouts: 0,
+            totalDuration: 0,
+            caloriesBurned: 0,
+            goalsAchieved: 0,
+            personalRecords: 0,
+            weeklyProgress: {
+                monday: 0,
+                tuesday: 0,
+                wednesday: 0,
+                thursday: 0,
+                friday: 0,
+                saturday: 0,
+                sunday: 0
             }
-        }
-    };
+        }),
+        todayWorkout: () => null,
+        recentActivities: () => [],
+        weeklySchedule: () => [],
+        weeklyWeightStats: () => ({
+            Pirmdiena: { totalWeight: 0, exercises: 0 },
+            Otrdiena: { totalWeight: 0, exercises: 0 },
+            Trešdiena: { totalWeight: 0, exercises: 0 },
+            Ceturtdiena: { totalWeight: 0, exercises: 0 },
+            Piektdiena: { totalWeight: 0, exercises: 0 },
+            Sestdiena: { totalWeight: 0, exercises: 0 },
+            Svētdiena: { totalWeight: 0, exercises: 0 }
+        }),
+        activeRoutine: () => null,
+        hasActiveWorkout: false
+    });
+
+    // Izmantojam aktīvo rutīnu no props
+    const activeRoutine = computed(() => props.activeRoutine);
+
+    console.log('Dashboard props:', props);
+    console.log('Active routine:', activeRoutine.value);
 
     // Iegūst šodienas vingrinājumus
     const getTodayExercises = () => {
         if (!activeRoutine.value || !activeRoutine.value.exercises) return [];
 
         const today = new Date();
-        const todayDayNumber = today.getDay(); // 0 = svētdiena, 1 = pirmdiena, ...
-        const adjustedDayNumber = todayDayNumber === 0 ? 7 : todayDayNumber; // Konvertē uz 1-7
+        const dayNumber = today.getDay(); // 0-6
+        let todayDayNumber = dayNumber === 0 ? 7 : dayNumber; // Convert to 1-7
 
-        console.log('Šodienas dienas numurs:', adjustedDayNumber);
+        const exercisesForToday = (activeRoutine.value.exercises || [])
+            .filter(exercise => {
+                const exerciseDay = exercise.pivot?.day_number || exercise.day_number || 1;
+                return exerciseDay === todayDayNumber;
+            })
+            .map(exercise => ({
+                id: exercise.id,
+                name: exercise.name,
+                muscle_group: exercise.muscle_group || '',
+                sets: exercise.pivot?.sets || exercise.sets || 3,
+                reps: exercise.pivot?.reps || exercise.reps || 10,
+                rest_seconds: exercise.pivot?.rest_seconds || exercise.rest_seconds || 60,
+                notes: exercise.pivot?.notes || exercise.notes || '',
+                day_number: exercise.pivot?.day_number || exercise.day_number || 1
+            }));
 
-        const exercises = activeRoutine.value.exercises.filter((exercise: any) => {
-            const exerciseDay = exercise.day_number || exercise.pivot?.day_number || 1;
-            console.log(`Vingrinājums: ${exercise.name}, Diena: ${exerciseDay}`);
-            return exerciseDay === adjustedDayNumber;
-        });
-
-        console.log('Šodienas vingrinājumi:', exercises);
-        return exercises;
+        return exercisesForToday;
     };
 
     // Iegūst vingrinājumu skaitu konkrētai dienai
@@ -413,12 +451,10 @@
     const getActiveRoutineExerciseCount = () => {
         if (!activeRoutine.value) return 0;
 
-        // Ja ir exercises masīvs
         if (activeRoutine.value.exercises && Array.isArray(activeRoutine.value.exercises)) {
             return activeRoutine.value.exercises.length;
         }
 
-        // Ja ir exercises_count
         if (activeRoutine.value.exercises_count !== undefined) {
             return activeRoutine.value.exercises_count;
         }
@@ -429,15 +465,7 @@
     // Iegūst ieteicamo treniņu skaitu nedēļā
     const getRecommendedWorkouts = () => {
         if (activeRoutine.value) {
-            console.log('Aktīvā rutīna ieteicamo treniņu aprēķinam:', activeRoutine.value);
-
-            // 1. Ja rutīnai ir days_per_week
-            if (activeRoutine.value.days_per_week !== undefined) {
-                console.log('Izmantojam days_per_week:', activeRoutine.value.days_per_week);
-                return Math.min(activeRoutine.value.days_per_week, 7);
-            }
-
-            // 2. Aprēķina no unikālajām dienām
+            // 1. Aprēķina no unikālajām dienām
             if (activeRoutine.value.exercises && Array.isArray(activeRoutine.value.exercises)) {
                 const uniqueDays = new Set<number>();
 
@@ -448,61 +476,16 @@
                     }
                 });
 
-                console.log('Unikālās dienas no vingrinājumiem:', uniqueDays.size);
-
                 if (uniqueDays.size > 0) {
-                    const result = Math.min(uniqueDays.size, 7);
-                    console.log('Rezultāts no unikālajām dienām:', result);
-                    return result;
+                    return Math.min(uniqueDays.size, 7);
                 }
             }
 
-            console.log('Noklusējums: 3 treniņi');
             return 3; // Noklusējums
         }
 
-        console.log('Nav aktīvas rutīnas, noklusējums: 3');
         return 3; // Noklusējums, ja nav rutīnas
     };
-
-    const props = withDefaults(defineProps<{
-        stats?: object;
-        todayWorkout?: object | null;
-        recentActivities?: any[];
-        weeklySchedule?: any[];
-        weeklyWeightStats?: object;
-    }>(), {
-        stats: () => ({
-            currentStreak: 0,
-            weeklyWorkouts: 0,
-            totalWorkouts: 0,
-            totalDuration: 0,
-            caloriesBurned: 0,
-            goalsAchieved: 0,
-            personalRecords: 0,
-            weeklyProgress: {
-                monday: 0,
-                tuesday: 0,
-                wednesday: 0,
-                thursday: 0,
-                friday: 0,
-                saturday: 0,
-                sunday: 0
-            }
-        }),
-        todayWorkout: () => null,
-        recentActivities: () => [],
-        weeklySchedule: () => [],
-        weeklyWeightStats: () => ({
-            monday: { totalWeight: 0, exercises: 0 },
-            tuesday: { totalWeight: 0, exercises: 0 },
-            wednesday: { totalWeight: 0, exercises: 0 },
-            thursday: { totalWeight: 0, exercises: 0 },
-            friday: { totalWeight: 0, exercises: 0 },
-            saturday: { totalWeight: 0, exercises: 0 },
-            sunday: { totalWeight: 0, exercises: 0 }
-        })
-    });
 
     // Pašreizējais datums
     const currentDate = computed(() => {
@@ -732,33 +715,7 @@
             const dayNumber = today.getDay();
             const todayDayNumber = dayNumber === 0 ? 7 : dayNumber;
 
-            let routineData = activeRoutine.value;
-
-            if (!routineData.exercises || routineData.exercises.length === 0) {
-                try {
-                    const response = await axios.get(`/api/routines/${routineData.id}`);
-                    routineData = response.data;
-                    console.log('Loaded routine from server:', routineData);
-                } catch (error) {
-                    console.error('Error loading routine:', error);
-                }
-            }
-
-            const exercisesForToday = (routineData.exercises || [])
-                .filter((exercise: any) => {
-                    const exerciseDay = exercise.day_number || exercise.pivot?.day_number || 1;
-                    return exerciseDay === todayDayNumber;
-                })
-                .map((exercise: any) => ({
-                    id: exercise.id,
-                    name: exercise.name,
-                    muscle_group: exercise.muscle_group || '',
-                    sets: exercise.sets || exercise.pivot?.sets || 3,
-                    reps: exercise.reps || exercise.pivot?.reps || 10,
-                    rest_seconds: exercise.rest_seconds || exercise.pivot?.rest_seconds || 60,
-                    notes: exercise.notes || exercise.pivot?.notes || '',
-                    day_number: exercise.day_number || exercise.pivot?.day_number || 1
-                }));
+            const exercisesForToday = getTodayExercises();
 
             console.log('Exercises for today:', exercisesForToday);
 
@@ -766,13 +723,13 @@
                 const dayNames = ['Svētdiena', 'Pirmdiena', 'Otrdiena', 'Trešdiena',
                     'Ceturtdiena', 'Piektdiena', 'Sestdiena'];
                 const dayIndex = todayDayNumber - 1;
-                alert(`Šodien (${dayNames[dayIndex]}) nav vingrinājumu rutīnā "${routineData.name}".`);
+                alert(`Šodien (${dayNames[dayIndex]}) nav vingrinājumu rutīnā "${activeRoutine.value.name}".`);
                 return;
             }
 
             const response = await axios.post('/workout/free/start', {
-                name: routineData.name + ' - ' + new Date().toLocaleDateString('lv-LV'),
-                routine_id: routineData.id,
+                name: activeRoutine.value.name + ' - ' + new Date().toLocaleDateString('lv-LV'),
+                routine_id: activeRoutine.value.id,
                 exercises: exercisesForToday
             });
 
@@ -804,10 +761,16 @@
         router.visit('/routines');
     };
 
-    const clearActiveRoutine = () => {
-        localStorage.removeItem('activeRoutine');
-        activeRoutine.value = null;
-        localStorage.setItem('routineChanged', 'true');
+    // Atjauniniet clearActiveRoutine funkciju, lai tā darbotos ar serveri
+    const clearActiveRoutine = async () => {
+        try {
+            await axios.post('/api/routines/clear-active');
+            // Pārlādē lapu, lai atjauninātu datus no servera
+            router.reload();
+        } catch (error) {
+            console.error('Error clearing active routine:', error);
+            alert('Kļūda notīrot aktīvo rutīnu');
+        }
     };
 
     const editSchedule = () => {
@@ -824,21 +787,12 @@
 
     // Lifecycle hooks
     onMounted(() => {
-        loadActiveRoutine();
-
-        const checkRoutineChanges = () => {
-            const routineChanged = localStorage.getItem('routineChanged');
-            if (routineChanged === 'true') {
-                loadActiveRoutine();
-                localStorage.removeItem('routineChanged');
-            }
-        };
-
-        const interval = setInterval(checkRoutineChanges, 1000);
-
-        return () => clearInterval(interval);
+        console.log('Dashboard mounted');
+        console.log('Active routine:', activeRoutine.value);
+        console.log('All props:', props);
     });
 </script>
+
 <style scoped>
     .dashboard-container {
         min-height: calc(100vh - 4rem);
@@ -1491,45 +1445,23 @@
         font-weight: 600;
     }
 
-    .routine-exercises-preview {
+    .routine-week-details {
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
     }
 
-    .preview-exercise {
+    .week-training-info {
         display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0.5rem 0.75rem;
-        background: white;
-        border-radius: 0.5rem;
-        border: 1px solid #dbeafe;
-    }
-
-    .preview-exercise-name {
+        gap: 1rem;
         font-size: 0.875rem;
-        color: #1e293b;
-        font-weight: 500;
+        color: #374151;
     }
 
-    .preview-exercise-sets {
-        font-size: 0.75rem;
-        color: #3b82f6;
-        font-weight: 600;
-        background: #eff6ff;
-        padding: 0.125rem 0.5rem;
-        border-radius: 0.25rem;
-    }
-
-    .more-exercises {
-        text-align: center;
-        font-size: 0.75rem;
-        color: #6b7280;
-        padding: 0.5rem;
-        background: #f8fafc;
-        border-radius: 0.25rem;
-        border: 1px dashed #e5e7eb;
+    .info-item {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
     }
 
     .schedule-list {
@@ -1598,6 +1530,17 @@
         font-size: 0.75rem;
         font-style: italic;
         padding: 0.25rem 0.5rem;
+    }
+
+    .exercise-count-badge {
+        background: #3b82f6;
+        color: white;
+        padding: 0.25rem 0.5rem;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        min-width: 1.5rem;
+        text-align: center;
     }
 
     .schedule-note {
@@ -1732,6 +1675,19 @@
         transition: width 0.5s ease;
     }
 
+    /* Today exercises count */
+    .today-exercises-count {
+        text-align: center;
+        padding: 0.5rem;
+        color: #6b7280;
+        font-size: 0.875rem;
+        font-style: italic;
+        background: #f9fafb;
+        border-radius: 0.5rem;
+        margin-top: 0.5rem;
+        border: 1px solid #e5e7eb;
+    }
+
     /* Responsive adjustments */
     @media (max-width: 768px) {
         .streak-badge {
@@ -1748,6 +1704,11 @@
         .motivation-text {
             font-size: 0.8125rem;
         }
+
+        .week-training-info {
+            flex-direction: column;
+            gap: 0.5rem;
+        }
     }
 
     @media (max-width: 480px) {
@@ -1757,6 +1718,21 @@
 
         .week-streak-info {
             display: none;
+        }
+
+        .routine-details {
+            flex-direction: column;
+            gap: 0.5rem;
+            align-items: flex-start;
+        }
+
+        .routine-actions {
+            flex-direction: column;
+            width: 100%;
+        }
+
+        .start-btn, .clear-btn {
+            width: 100%;
         }
     }
 </style>

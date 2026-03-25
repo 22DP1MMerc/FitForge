@@ -1,7 +1,7 @@
 <script setup>
     import AppLayout from '@/layouts/AppLayout.vue'
     import { Head, Link, router } from '@inertiajs/vue3';
-    import { ref, watch } from 'vue';
+    import { ref, watch, computed } from 'vue';
 
     const props = defineProps({
         exercises: Array,
@@ -12,6 +12,22 @@
 
     const muscleGroupFilter = ref(props.filters.muscle_group || '');
     const equipmentFilter = ref(props.filters.equipment || '');
+
+    const formatWeight = (weight) => {
+        if (!weight && weight !== 0) return '0';
+
+        // Pārbaudām, vai ir decimāldaļa .00
+        const num = parseFloat(weight);
+        if (isNaN(num)) return '0';
+
+        // Ja skaitlis ir vesels (bez decimāldaļas vai decimāldaļa ir .00)
+        if (num % 1 === 0) {
+            return num.toString();
+        }
+
+        // Ja ir decimāldaļa, parādam ar 1 ciparu aiz komata
+        return num.toFixed(1);
+    };
 
     watch([muscleGroupFilter, equipmentFilter], () => {
         const filters = {};
@@ -68,6 +84,18 @@
                         <div v-for="exercise in exercises" :key="exercise.id" class="exercise-card">
                             <h2>{{ exercise.name }}</h2>
                             <p class="exercise-description">{{ exercise.description }}</p>
+
+                            <!-- Personal Record Section - SIMPLIFIED FORMAT -->
+                            <div v-if="exercise.personal_records && exercise.personal_records.length > 0"
+                                 class="personal-record-simple">
+                                <span class="pr-label">PR: </span>
+                                <span class="pr-value">
+                                    {{ formatWeight(exercise.personal_records[0].weight) }}kg
+                                    <span class="pr-times">×</span>
+                                    {{ exercise.personal_records[0].reps }}
+                                </span>
+                            </div>
+
                             <div class="exercise-tags">
                                 <span class="muscle-tag">{{ exercise.muscle_group }}</span>
                                 <span class="equipment-tag">{{ exercise.equipment }}</span>
@@ -180,6 +208,8 @@
         padding: 1.5rem;
         transition: all 0.2s ease;
         box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.05);
+        display: flex;
+        flex-direction: column;
     }
 
         .exercise-card:hover {
@@ -199,12 +229,72 @@
         font-size: 0.875rem;
         margin: 0 0 1rem 0;
         line-height: 1.5;
+        flex-grow: 1;
+    }
+
+    .personal-record {
+        background: #f0f9ff;
+        border: 1px solid #0ea5e9;
+        border-radius: 0.5rem;
+        padding: 0.75rem;
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: flex-start;
+        gap: 0.75rem;
+    }
+
+    .record-icon {
+        color: #0ea5e9;
+        flex-shrink: 0;
+        margin-top: 0.125rem;
+    }
+
+        .record-icon svg {
+            width: 1.25rem;
+            height: 1.25rem;
+        }
+
+    .record-details {
+        flex: 1;
+    }
+
+    .record-title {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #0369a1;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 0.25rem;
+    }
+
+    .record-data {
+        display: flex;
+        align-items: baseline;
+        gap: 0.5rem;
+        margin-bottom: 0.25rem;
+    }
+
+    .record-weight {
+        font-size: 1.125rem;
+        font-weight: 700;
+        color: #111827;
+    }
+
+    .record-info {
+        font-size: 0.875rem;
+        color: #4b5563;
+    }
+
+    .record-date {
+        font-size: 0.75rem;
+        color: #6b7280;
+        font-style: italic;
     }
 
     .exercise-tags {
         display: flex;
         gap: 0.5rem;
-        margin-top: 1rem;
+        margin-top: auto;
     }
 
     .muscle-tag {

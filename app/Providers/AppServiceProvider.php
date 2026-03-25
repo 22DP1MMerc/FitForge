@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Models\WorkoutLogExercise;
+use App\Observers\WorkoutLogExerciseObserver;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -19,6 +21,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        WorkoutLogExercise::observe(WorkoutLogExerciseObserver::class);
     }
 }

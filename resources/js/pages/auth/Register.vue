@@ -1,44 +1,65 @@
 <script setup lang="ts">
-    import InputError from '@/components/InputError.vue';
-    import TextLink from '@/components/TextLink.vue';
-    import { Button } from '@/components/ui/button';
-    import { Input } from '@/components/ui/input';
-    import { Label } from '@/components/ui/label';
-    import AuthBase from '@/layouts/AuthLayout.vue';
-    import { Head, useForm } from '@inertiajs/vue3';
-    import { LoaderCircle, Eye, EyeOff } from 'lucide-vue-next';
-    import AppLayout from '@/layouts/AppLayout.vue';
-    import { ref } from 'vue';
+import InputError from '@/components/InputError.vue';
+import TextLink from '@/components/TextLink.vue';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import AuthBase from '@/layouts/AuthLayout.vue';
+import { Head, useForm } from '@inertiajs/vue3';
+import { LoaderCircle, Eye, EyeOff } from 'lucide-vue-next';
+import AppLayout from '@/layouts/AppLayout.vue';
+import { ref, computed } from 'vue';
 
-    const form = useForm({
-        name: '',
-        email: '',
-        password: '',
-        password_confirmation: '',
+const form = useForm({
+    name: '',
+    email: '',
+    password: '',
+    password_confirmation: '',
+});
+
+const showPassword = ref(false);
+const showConfirmPassword = ref(false);
+
+const passwordValidation = computed(() => {
+    const password = form.password;
+    return {
+        minLength: password.length >= 8,
+        hasUppercase: /[A-Z]/.test(password),
+        hasSpecialOrNumber: /[0-9!@#$%^&*(),.?":{}|<>]/.test(password),
+    };
+});
+
+const isPasswordValid = computed(() => {
+    return passwordValidation.value.minLength &&
+           passwordValidation.value.hasUppercase &&
+           passwordValidation.value.hasSpecialOrNumber;
+});
+
+const submit = () => {
+    if (!isPasswordValid.value) {
+        form.setError('password', 'Parolei jābūt vismaz 8 rakstzīmēm, jāsatur lielais burts un simbols vai cipars');
+        return;
+    }
+
+    form.post(route('register'), {
+        onFinish: () => form.reset('password', 'password_confirmation'),
+        onSuccess: (response) => {
+            // Don't redirect - the server will handle redirect to verification
+            console.log('Registration successful, check your email for verification');
+        },
+        onError: (errors) => {
+            console.error('Registration failed:', errors);
+        }
     });
+};
 
-    // Add refs for password visibility
-    const showPassword = ref(false);
-    const showConfirmPassword = ref(false);
+const togglePasswordVisibility = () => {
+    showPassword.value = !showPassword.value;
+};
 
-    const submit = () => {
-        form.post(route('register'), {
-            onFinish: () => form.reset('password', 'password_confirmation'),
-            onSuccess: () => {
-                window.location.href = route('home'); // Force redirect to home
-            }
-        });
-    };
-
-    // Toggle password visibility
-    const togglePasswordVisibility = () => {
-        showPassword.value = !showPassword.value;
-    };
-
-    // Toggle confirm password visibility
-    const toggleConfirmPasswordVisibility = () => {
-        showConfirmPassword.value = !showConfirmPassword.value;
-    };
+const toggleConfirmPasswordVisibility = () => {
+    showConfirmPassword.value = !showConfirmPassword.value;
+};
 </script>
 
 <template>
@@ -80,6 +101,20 @@
                                 <EyeOff v-else class="h-5 w-5" />
                             </button>
                         </div>
+
+                        <!-- Password requirements display -->
+                        <div class="mt-2 text-xs space-y-1">
+                            <div :class="passwordValidation.minLength ? 'text-green-600' : 'text-gray-500'">
+                                ✓ Vismaz 8 rakstzīmes
+                            </div>
+                            <div :class="passwordValidation.hasUppercase ? 'text-green-600' : 'text-gray-500'">
+                                ✓ Vismaz viens lielais burts (A-Z)
+                            </div>
+                            <div :class="passwordValidation.hasSpecialOrNumber ? 'text-green-600' : 'text-gray-500'">
+                                ✓ Vismaz viens cipars vai speciālais simbols (@, #, $, utt.)
+                            </div>
+                        </div>
+
                         <InputError :message="form.errors.password" />
                     </div>
 
@@ -253,6 +288,22 @@
 
     .text-center {
         text-align: center;
+    }
+
+    .text-xs {
+        font-size: 0.75rem;
+    }
+
+    .space-y-1 > * + * {
+        margin-top: 0.25rem;
+    }
+
+    .text-green-600 {
+        color: #16a34a;
+    }
+
+    .text-gray-500 {
+        color: #6b7280;
     }
 
     input + span,

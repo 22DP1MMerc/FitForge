@@ -102,6 +102,143 @@ class WorkoutLogController extends Controller
     ]);
 }
 
+ public function show($id)
+{
+    $user = Auth::user();
+    
+    // Noņemam 'logExercises.sets' no with(), jo tā nav nepieciešama
+    $workoutLog = WorkoutLog::with([
+        'routine',
+        'logExercises.exercise'
+        // 'logExercises.sets' <-- noņemt
+    ])->where('user_id', $user->id)
+      ->findOrFail($id);
+    
+    // Pārveidojam datus, lai tie atbilstu Vue komponentam
+    $workoutLog->log_exercises = $workoutLog->logExercises->map(function($logExercise) {
+        // Konvertējam reps_completed un weights_used masīvus
+        $reps = is_array($logExercise->reps_completed) ? $logExercise->reps_completed : [];
+        $weights = is_array($logExercise->weights_used) ? $logExercise->weights_used : [];
+        
+        // Izveidojam setu datus
+        $setsData = [];
+        $setsCount = min(count($reps), $logExercise->sets_completed);
+        
+        for ($i = 0; $i < $setsCount; $i++) {
+            $setsData[] = [
+                'reps' => $reps[$i] ?? 0,
+                'weight' => isset($weights[$i]) 
+                    ? (is_array($weights[$i]) ? ($weights[$i]['weight'] ?? 0) : $weights[$i])
+                    : 0
+            ];
+        }
+        
+        return [
+            'id' => $logExercise->id,
+            'exercise' => $logExercise->exercise ? [
+                'id' => $logExercise->exercise->id,
+                'name' => $logExercise->exercise->name,
+                'muscle_group' => $logExercise->exercise->muscle_group
+            ] : null,
+            'sets_completed' => $logExercise->sets_completed,
+            'sets_planned' => $logExercise->sets_planned,
+            'reps_planned' => $logExercise->reps_planned,
+            'reps_completed' => $reps,
+            'weights_used' => $weights,
+            'sets_data' => $setsData, // Pievienojam apstrādātus setu datus
+            'notes' => $logExercise->notes
+        ];
+    });
+    
+    // Aprēķinam statistiku
+    $stats = $this->calculateWorkoutStats($workoutLog);
+    
+    // Atrodam līdzīgos treniņus
+    $similarWorkouts = WorkoutLog::where('user_id', $user->id)
+        ->where('id', '!=', $id)
+        ->whereDate('completed_at', '>=', Carbon::now()->subMonth())
+        ->orderBy('completed_at', 'desc')
+        ->limit(5)
+        ->get()
+        ->map(function($log) {
+            return [
+                'id' => $log->id,
+                'name' => $log->name,
+                'completed_at' => $log->completed_at?->toISOString(),
+                'duration_minutes' => $log->duration_minutes,
+            ];
+        });
+    
+    return Inertia::render('WorkoutLogs/Show', [
+        'workoutLog' => [
+            'id' => $workoutLog->id,
+            'name' => $workoutLog->name,
+            'completed_at' => $workoutLog->completed_at?->toISOString(),
+            'duration_minutes' => $workoutLog->duration_minutes,
+            'calories_burned' => $workoutLog->calories_burned,
+            'notes' => $workoutLog->notes,
+            'routine' => $workoutLog->routine ? [
+                'id' => $workoutLog->routine->id,
+                'name' => $workoutLog->routine->name
+            ] : null,
+            'log_exercises' => $workoutLog->log_exercises // Izmantojam pārveidotos datus
+        ],
+        'stats' => $stats,
+        'similarWorkouts' => $similarWorkouts
+    ]);
+}
+
+    private function calculateWorkoutStats($workoutLog)
+{
+    $totalSets = 0;
+    $totalReps = 0;
+    $totalWeight = 0;
+    $muscleGroups = [];
+    
+    foreach ($workoutLog->log_exercises as $logExercise) {
+        $totalSets += $logExercise['sets_completed'];
+        
+        // Apstrādājam atkārtojumus
+        if (is_array($logExercise['reps_completed'])) {
+            foreach ($logExercise['reps_completed'] as $reps) {
+                if (is_numeric($reps)) {
+                    $totalReps += $reps;
+                }
+            }
+        }
+        
+        // Apstrādājam svarus
+        if (is_array($logExercise['weights_used'])) {
+            foreach ($logExercise['weights_used'] as $weight) {
+                if (is_numeric($weight)) {
+                    $totalWeight += $weight;
+                } elseif (is_array($weight) && isset($weight['weight'])) {
+                    $totalWeight += $weight['weight'];
+                }
+            }
+        }
+        
+        // Saskaitām muskuļu grupas
+        if ($logExercise['exercise'] && $logExercise['exercise']['muscle_group']) {
+            $muscleGroup = $logExercise['exercise']['muscle_group'];
+            $muscleGroups[$muscleGroup] = ($muscleGroups[$muscleGroup] ?? 0) + $logExercise['sets_completed'];
+        }
+    }
+    
+    // Aprēķinam vidējos rādītājus
+    $averageRepsPerSet = $totalSets > 0 ? round($totalReps / $totalSets, 1) : 0;
+    $averageWeightPerSet = $totalSets > 0 ? round($totalWeight / $totalSets, 1) : 0;
+    
+    return [
+        'total_sets' => $totalSets,
+        'total_reps' => $totalReps,
+        'total_weight' => round($totalWeight, 1),
+        'average_reps_per_set' => $averageRepsPerSet,
+        'average_weight_per_set' => $averageWeightPerSet,
+        'muscle_groups' => $muscleGroups,
+    ];
+}
+
 // Palīgfunkcija treniņa statistikas aprēķināšanai
 private function calculateSessionStats($session)
 {

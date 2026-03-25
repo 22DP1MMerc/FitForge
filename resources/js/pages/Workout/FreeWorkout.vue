@@ -405,30 +405,40 @@
         }
     };
 
-    const resetWorkout = async () => {
-        if (confirm('Vai tiešām vēlies atcelt treniņu? Visi dati tiks zaudēti.')) {
-            try {
-                if (workoutSessionId.value) {
-                    const response = await axios.post(`/workout/${workoutSessionId.value}/cancel`);
+   const resetWorkout = async () => {
+    if (confirm('Vai tiešām vēlies atcelt treniņu? Visi dati tiks zaudēti.')) {
+        try {
+            if (workoutSessionId.value) {
+                const response = await axios.post(`/workout/${workoutSessionId.value}/cancel`);
 
-                    if (response.data.success) {
-                        workoutExercises.value = [];
-                        activeExercise.value = null;
-                        workoutName.value = 'Brīvais treniņš - ' + new Date().toLocaleDateString('lv-LV');
-                        workoutSessionId.value = null;
-                        resetTimer();
-                        localStorage.removeItem('workout_timer');
-                        localStorage.removeItem('workout_start_time');
+                if (response.data.success) {
+                    // Clear local data
+                    workoutExercises.value = [];
+                    activeExercise.value = null;
+                    workoutName.value = 'Brīvais treniņš - ' + new Date().toLocaleDateString('lv-LV');
+                    workoutSessionId.value = null;
+                    resetTimer();
+                    localStorage.removeItem('workout_timer');
+                    localStorage.removeItem('workout_start_time');
 
-                        router.visit('/dashboard');
-                    }
+                    // Navigate to dashboard
+                    router.visit('/dashboard');
+                } else {
+                    alert('Kļūda: ' + (response.data.message || 'Nezināma kļūda'));
                 }
-            } catch (error: any) {
-                console.error('Error canceling workout:', error);
-                alert('Kļūda atceļot treniņu: ' + (error.response?.data?.message || error.message));
             }
+        } catch (error: any) {
+            console.error('Error canceling workout:', error);
+            let errorMessage = 'Kļūda atceļot treniņu';
+            if (error.response?.data?.message) {
+                errorMessage += ': ' + error.response.data.message;
+            } else if (error.message) {
+                errorMessage += ': ' + error.message;
+            }
+            alert(errorMessage);
         }
-    };
+    }
+};
 
     const toggleMuscleGroup = (group: string) => {
         const index = selectedMuscleGroups.value.indexOf(group);
