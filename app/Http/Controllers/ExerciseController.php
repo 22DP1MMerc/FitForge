@@ -1,4 +1,5 @@
 <?php
+// app/Http/Controllers/ExerciseController.php
 
 namespace App\Http\Controllers;
 
@@ -19,17 +20,22 @@ class ExerciseController extends Controller
         if ($request->has('equipment')) {
             $query->where('equipment', $request->equipment);
         }
+        
         $exercises = $query->get();
 
-         if (Auth::check()) {
-        $exercises->load(['personalRecords' => function ($query) {
-            $query->where('user_id', Auth::id())
-                  ->orderBy('weight', 'desc')
-                  ->orderBy('reps', 'desc')
-                  ->orderBy('achieved_at', 'desc');
-        }]);
-    }
-
+        if (Auth::check()) {
+            $exercises->load(['personalRecords' => function ($query) {
+                $query->where('user_id', Auth::id())
+                      ->orderBy('weight', 'desc')
+                      ->orderBy('reps', 'desc')
+                      ->orderBy('achieved_at', 'desc');
+            }]);
+        }
+        
+        // Add image URL to each exercise
+        $exercises->each(function ($exercise) {
+            $exercise->image_url = $exercise->image_url;
+        });
         
         $muscleGroups = Exercise::distinct()->pluck('muscle_group');
         $equipmentOptions = Exercise::distinct()->pluck('equipment');

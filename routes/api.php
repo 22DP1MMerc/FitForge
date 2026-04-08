@@ -153,4 +153,10 @@ Route::middleware('auth')->group(function () {
     // Routine routes
     Route::post('/routines/{routine}/set-active', [RoutineController::class, 'setActive']);
     Route::get('/routines/{routine}', [RoutineController::class, 'getRoutine']);
+
+Route::middleware(['auth:sanctum'])->group(function () {
+    Route::post('/routines/set-active', [RoutineController::class, 'setActive']);
+    Route::post('/routines/clear-active', [RoutineController::class, 'clearActive']);
+    Route::get('/routines/active', [RoutineController::class, 'getActive']);
+});
 });

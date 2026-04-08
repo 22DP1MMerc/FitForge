@@ -1,542 +1,572 @@
 <script setup lang="ts">
-    import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
-    import { router, usePage } from '@inertiajs/vue3';
-    import AppLayout from '@/Layouts/AppLayout.vue';
-    import axios from 'axios';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { router, usePage } from '@inertiajs/vue3';
+import AppLayout from '@/Layouts/AppLayout.vue';
+import axios from 'axios';
+import Modal from '@/Components/Modal.vue';
+import { useModal } from '@/Composables/useModal';
 
-    const page = usePage();
+const page = usePage();
+const { modalRef, confirm, alert, success, error } = useModal();
 
-    // ========== PROPS DEFINĒŠANA ==========
-    const props = defineProps({
-        availableExercises: {
-            type: Array,
-            default: () => []
-        },
-        initialWorkout: {
-            type: Object,
-            default: () => ({})
-        },
-        workoutSession: {
-            type: Object,
-            default: null
+// ========== PROPS DEFINĒŠANA ==========
+const props = defineProps({
+    availableExercises: {
+        type: Array,
+        default: () => []
+    },
+    initialWorkout: {
+        type: Object,
+        default: () => ({})
+    },
+    workoutSession: {
+        type: Object,
+        default: null
+    }
+});
+
+// ========== REAKTĪVIE MAINĪGIE ==========
+// Hronometra stāvokļi
+const timer = ref(0);
+const timerRunning = ref(false);
+let timerInterval: NodeJS.Timeout | null = null;
+
+// Treniņa dati
+const workoutName = ref(props.initialWorkout?.name || 'Brīvais treniņš');
+const workoutExercises = ref<any[]>([]);
+const activeExercise = ref<any>(null);
+const workoutSessionId = ref(props.workoutSession?.id || null);
+
+// Meklēšana un filtri
+const searchQuery = ref('');
+const selectedMuscleGroups = ref<string[]>([]);
+
+// ========== COMPUTED PROPERTIES ==========
+// Pašreizējais datums
+const currentDate = computed(() => {
+    return new Date().toLocaleDateString('lv-LV', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
+});
+
+// Viegli pieejamas muskuļu grupas
+const muscleGroups = computed(() => {
+    const groups = new Set<string>();
+    props.availableExercises.forEach((ex: any) => {
+        if (ex.muscle_group) {
+            groups.add(ex.muscle_group);
         }
     });
+    return Array.from(groups).sort();
+});
 
-    // ========== REAKTĪVIE MAINĪGIE ==========
-    // Hronometra stāvokļi
-    const timer = ref(0);
-    const timerRunning = ref(false);
-    let timerInterval: NodeJS.Timeout | null = null;
-
-    // Treniņa dati
-    const workoutName = ref(props.initialWorkout?.name || 'Brīvais treniņš');
-    const workoutExercises = ref<any[]>([]);
-    const activeExercise = ref<any>(null);
-    const workoutSessionId = ref(props.workoutSession?.id || null);
-
-    // Meklēšana un filtri
-    const searchQuery = ref('');
-    const selectedMuscleGroups = ref<string[]>([]);
-
-    // ========== COMPUTED PROPERTIES ==========
-    // Pašreizējais datums
-    const currentDate = computed(() => {
-        return new Date().toLocaleDateString('lv-LV', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-        });
+// Filtrēti vingrinājumi
+const filteredExercises = computed(() => {
+    return props.availableExercises.filter((exercise: any) => {
+        const matchesSearch = searchQuery.value === '' ||
+            exercise.name.toLowerCase().includes(searchQuery.value.toLowerCase());
+        const matchesMuscleGroup = selectedMuscleGroups.value.length === 0 ||
+            selectedMuscleGroups.value.includes(exercise.muscle_group);
+        return matchesSearch && matchesMuscleGroup;
     });
+});
 
-    // Viegli pieejamas muskuļu grupas
-    const muscleGroups = computed(() => {
-        const groups = new Set<string>();
-        props.availableExercises.forEach((ex: any) => {
-            if (ex.muscle_group) {
-                groups.add(ex.muscle_group);
-            }
-        });
-        return Array.from(groups).sort();
-    });
+// Pabeigto vingrinājumu skaits
+const completedExercisesCount = computed(() => {
+    return workoutExercises.value.filter((ex: any) =>
+        ex.completedSets?.length === ex.sets
+    ).length;
+});
 
-    // Filtrēti vingrinājumi
-    const filteredExercises = computed(() => {
-        return props.availableExercises.filter((exercise: any) => {
-            const matchesSearch = searchQuery.value === '' ||
-                exercise.name.toLowerCase().includes(searchQuery.value.toLowerCase());
-            const matchesMuscleGroup = selectedMuscleGroups.value.length === 0 ||
-                selectedMuscleGroups.value.includes(exercise.muscle_group);
-            return matchesSearch && matchesMuscleGroup;
-        });
-    });
+// Formatētais laiks
+const formattedTime = computed(() => {
+    const seconds = timer.value;
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
 
-    // Pabeigto vingrinājumu skaits
-    const completedExercisesCount = computed(() => {
-        return workoutExercises.value.filter((ex: any) =>
-            ex.completedSets?.length === ex.sets
-        ).length;
-    });
+    if (hrs > 0) {
+        return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+});
 
-    // Formatētais laiks
-    const formattedTime = computed(() => {
-        const seconds = timer.value;
-        const hrs = Math.floor(seconds / 3600);
-        const mins = Math.floor((seconds % 3600) / 60);
-        const secs = seconds % 60;
-
-        if (hrs > 0) {
-            return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-        }
-        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    });
-
-    // ========== FUNKCIJAS ==========
-    // Hronometra funkcijas
-    const toggleTimer = () => {
-        if (timerRunning.value) {
-            if (timerInterval) {
-                clearInterval(timerInterval);
-                timerInterval = null;
-            }
-            timerRunning.value = false;
-        } else {
-            timerRunning.value = true;
-            timerInterval = setInterval(() => {
-                timer.value++;
-            }, 1000);
-        }
-    };
-
-    const resetTimer = () => {
+// ========== FUNKCIJAS ==========
+// Hronometra funkcijas
+const toggleTimer = () => {
+    if (timerRunning.value) {
         if (timerInterval) {
             clearInterval(timerInterval);
             timerInterval = null;
         }
         timerRunning.value = false;
-        timer.value = 0;
-        localStorage.removeItem('workout_timer');
-        localStorage.removeItem('workout_start_time');
-    };
+    } else {
+        timerRunning.value = true;
+        timerInterval = setInterval(() => {
+            timer.value++;
+        }, 1000);
+    }
+};
 
-    // Aprēķina pagājušo laiku no starta laika
-    const calculateElapsedTime = (startTime: string) => {
-        if (!startTime) return 0;
-        const start = new Date(startTime);
-        const now = new Date();
-        return Math.floor((now.getTime() - start.getTime()) / 1000);
-    };
+const resetTimer = () => {
+    if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+    }
+    timerRunning.value = false;
+    timer.value = 0;
+    localStorage.removeItem('workout_timer');
+    localStorage.removeItem('workout_start_time');
+};
 
-    // Sākt treniņu sesiju
-    const startWorkoutSession = async (): Promise<string | null> => {
-        try {
-            const response = await axios.post('/workout/free/start', {
-                name: workoutName.value
-            });
+// Aprēķina pagājušo laiku no starta laika
+const calculateElapsedTime = (startTime: string) => {
+    if (!startTime) return 0;
+    const start = new Date(startTime);
+    const now = new Date();
+    return Math.floor((now.getTime() - start.getTime()) / 1000);
+};
 
-            if (response.data?.success && response.data.session_id) {
-                workoutSessionId.value = response.data.session_id;
+// Sākt treniņu sesiju
+const startWorkoutSession = async (): Promise<string | null> => {
+    try {
+        const response = await axios.post('/workout/free/start', {
+            name: workoutName.value
+        });
 
-                // Saglabā starta laiku
-                const startTime = new Date().toISOString();
-                localStorage.setItem('workout_start_time', startTime);
-                localStorage.removeItem('workout_timer');
+        if (response.data?.success && response.data.session_id) {
+            workoutSessionId.value = response.data.session_id;
 
-                // Start timer
+            // Saglabā starta laiku
+            const startTime = new Date().toISOString();
+            localStorage.setItem('workout_start_time', startTime);
+            localStorage.removeItem('workout_timer');
+
+            // Start timer
+            if (!timerRunning.value) {
+                toggleTimer();
+            }
+
+            return response.data.session_id;
+        }
+        throw new Error(response.data?.message || 'Unknown error');
+    } catch (error: any) {
+        console.error('Error starting workout session:', error);
+        let errorMessage = 'Kļūda sākot treniņu';
+        if (error.response?.data?.message) {
+            errorMessage += ': ' + error.response.data.message;
+        } else if (error.message) {
+            errorMessage += ': ' + error.message;
+        }
+        await error(errorMessage);
+        return null;
+    }
+};
+
+// Ielādēt sesijas datus
+const loadWorkoutSession = async () => {
+    if (!workoutSessionId.value) return;
+
+    try {
+        const response = await axios.get(`/api/workout-session/${workoutSessionId.value}`);
+        if (response.data) {
+            workoutExercises.value = response.data.exercises.map((exercise: any) => ({
+                id: exercise.id,
+                session_exercise_id: exercise.session_exercise_id,
+                name: exercise.name,
+                muscle_group: exercise.muscle_group,
+                sets: exercise.sets_planned,
+                reps: exercise.reps_planned,
+                weight: 0,
+                currentSet: exercise.sets_completed + 1,
+                completedSets: exercise.reps_completed?.map((reps: number, index: number) => ({
+                    reps: reps,
+                    weight: exercise.weights_used?.[index] || 0,
+                    completedAt: new Date().toISOString()
+                })) || [],
+                restTime: 60
+            }));
+
+            if (workoutExercises.value.length > 0 && !activeExercise.value) {
+                setActiveExercise(workoutExercises.value[0]);
+            }
+
+            workoutName.value = response.data.name || workoutName.value;
+
+            if (response.data.started_at) {
+                const elapsedTime = calculateElapsedTime(response.data.started_at);
+                timer.value = elapsedTime;
+                localStorage.setItem('workout_timer', elapsedTime.toString());
+                localStorage.setItem('workout_start_time', response.data.started_at);
+
                 if (!timerRunning.value) {
                     toggleTimer();
                 }
-
-                return response.data.session_id;
-            }
-            throw new Error(response.data?.message || 'Unknown error');
-        } catch (error: any) {
-            console.error('Error starting workout session:', error);
-            let errorMessage = 'Kļūda sākot treniņu';
-            if (error.response?.data?.message) {
-                errorMessage += ': ' + error.response.data.message;
-            } else if (error.message) {
-                errorMessage += ': ' + error.message;
-            }
-            alert(errorMessage);
-            return null;
-        }
-    };
-
-    // Ielādēt sesijas datus
-    const loadWorkoutSession = async () => {
-        if (!workoutSessionId.value) return;
-
-        try {
-            const response = await axios.get(`/api/workout-session/${workoutSessionId.value}`);
-            if (response.data) {
-                workoutExercises.value = response.data.exercises.map((exercise: any) => ({
-                    id: exercise.id,
-                    session_exercise_id: exercise.session_exercise_id,
-                    name: exercise.name,
-                    muscle_group: exercise.muscle_group,
-                    sets: exercise.sets_planned,
-                    reps: exercise.reps_planned,
-                    weight: 0,
-                    currentSet: exercise.sets_completed + 1,
-                    completedSets: exercise.reps_completed?.map((reps: number, index: number) => ({
-                        reps: reps,
-                        weight: exercise.weights_used?.[index] || 0,
-                        completedAt: new Date().toISOString()
-                    })) || [],
-                    restTime: 60
-                }));
-
-                if (workoutExercises.value.length > 0 && !activeExercise.value) {
-                    setActiveExercise(workoutExercises.value[0]);
-                }
-
-                workoutName.value = response.data.name || workoutName.value;
-
-                if (response.data.started_at) {
-                    const elapsedTime = calculateElapsedTime(response.data.started_at);
-                    timer.value = elapsedTime;
-                    localStorage.setItem('workout_timer', elapsedTime.toString());
-                    localStorage.setItem('workout_start_time', response.data.started_at);
-
-                    if (!timerRunning.value) {
-                        toggleTimer();
-                    }
-                }
-            }
-        } catch (error) {
-            console.error('Error loading workout session:', error);
-        }
-    };
-
-    // Pievienot vingrinājumu
-    const addExercise = async (exercise: any) => {
-        try {
-            if (!workoutSessionId.value) {
-                const sessionId = await startWorkoutSession();
-                if (!sessionId) return;
-            }
-
-            // Pārbauda, vai vingrinājums jau eksistē
-            const existingIndex = workoutExercises.value.findIndex(ex => ex.id === exercise.id);
-            if (existingIndex !== -1) {
-                setActiveExercise(workoutExercises.value[existingIndex]);
-                return;
-            }
-
-            // Pievieno backendā
-            await axios.post(`/workout/${workoutSessionId.value}/exercises`, {
-                exercise_id: exercise.id,
-                sets_planned: 3,
-                reps_planned: 10
-            });
-
-            // Atjaunina visu sarakstu no servera
-            await loadWorkoutSession();
-
-        } catch (error: any) {
-            console.error('Error adding exercise:', error);
-            if (error.response?.status === 404) {
-                alert('Treniņa sesija nav atrasta. Lūdzu, sāciet jaunu treniņu.');
-            } else {
-                alert('Kļūda pievienojot vingrinājumu: ' + (error.response?.data?.message || error.message));
             }
         }
-    };
+    } catch (error) {
+        console.error('Error loading workout session:', error);
+    }
+};
 
-    // Noņemt vingrinājumu
-    const removeExercise = async (index: number) => {
-        const removedExercise = workoutExercises.value[index];
-
-        try {
-            if (removedExercise.session_exercise_id && workoutSessionId.value) {
-                await axios.delete(`/workout/${workoutSessionId.value}/exercises/${removedExercise.session_exercise_id}`);
-            }
-
-            workoutExercises.value.splice(index, 1);
-
-            // Ja tika noņemts aktīvais vingrinājums
-            if (activeExercise.value && activeExercise.value.id === removedExercise.id) {
-                if (workoutExercises.value.length > 0) {
-                    setActiveExercise(workoutExercises.value[0]);
-                } else {
-                    activeExercise.value = null;
-                }
-            }
-        } catch (error) {
-            console.error('Error removing exercise:', error);
-            alert('Kļūda noņemot vingrinājumu');
+// Pievienot vingrinājumu
+const addExercise = async (exercise: any) => {
+    try {
+        if (!workoutSessionId.value) {
+            const sessionId = await startWorkoutSession();
+            if (!sessionId) return;
         }
-    };
 
-    const setActiveExercise = (exercise: any) => {
-        activeExercise.value = { ...exercise };
-    };
-
-    const updateReps = (change: number) => {
-        if (activeExercise.value) {
-            const newReps = activeExercise.value.reps + change;
-            if (newReps >= 1 && newReps <= 50) {
-                activeExercise.value.reps = newReps;
-
-                const index = workoutExercises.value.findIndex((ex: any) => ex.id === activeExercise.value.id);
-                if (index !== -1) {
-                    workoutExercises.value[index].reps = newReps;
-                }
-            }
-        }
-    };
-
-    const updateWeight = (change: number) => {
-        if (activeExercise.value) {
-            const newWeight = parseFloat((activeExercise.value.weight + change).toFixed(1));
-            if (newWeight >= 0) {
-                activeExercise.value.weight = newWeight;
-
-                const index = workoutExercises.value.findIndex((ex: any) => ex.id === activeExercise.value.id);
-                if (index !== -1) {
-                    workoutExercises.value[index].weight = newWeight;
-                }
-            }
-        }
-    };
-
-    // Pabeigt setu
-    const completeSet = async () => {
-        if (!activeExercise.value) return;
-
-        try {
-            const completedSet = {
-                reps: activeExercise.value.reps,
-                weight: activeExercise.value.weight,
-                completedAt: new Date().toISOString()
-            };
-
-            const index = workoutExercises.value.findIndex((ex: any) => ex.id === activeExercise.value.id);
-            if (index !== -1) {
-                // Saglabā backendā
-                if (workoutSessionId.value && workoutExercises.value[index].session_exercise_id) {
-                    await axios.post(
-                        `/workout/${workoutSessionId.value}/exercises/${workoutExercises.value[index].session_exercise_id}/set`,
-                        {
-                            set_index: workoutExercises.value[index].completedSets.length,
-                            reps: completedSet.reps,
-                            weight: completedSet.weight
-                        }
-                    );
-                }
-
-                // Pievieno lokāli
-                workoutExercises.value[index].completedSets.push(completedSet);
-                workoutExercises.value[index].currentSet++;
-
-                if (workoutExercises.value[index].currentSet <= workoutExercises.value[index].sets) {
-                    // Atjaunina nākamo setu
-                    workoutExercises.value[index].reps = 10;
-                    workoutExercises.value[index].weight = 0;
-                    activeExercise.value = { ...workoutExercises.value[index] };
-                } else {
-                    // Pāriet uz nākamo vingrinājumu
-                    const nextIndex = (index + 1) % workoutExercises.value.length;
-                    if (workoutExercises.value.length > 0) {
-                        setActiveExercise(workoutExercises.value[nextIndex]);
-                    } else {
-                        activeExercise.value = null;
-                    }
-                }
-            }
-        } catch (error: any) {
-            console.error('Error completing set:', error);
-            alert('Kļūda saglabājot setu: ' + (error.response?.data?.message || error.message));
-        }
-    };
-
-    // Pabeigt treniņu
-    const completeWorkout = async () => {
-        if (workoutExercises.value.length === 0) {
-            alert('Lūdzu, pievieno vismaz vienu vingrinājumu!');
+        // Pārbauda, vai vingrinājums jau eksistē
+        const existingIndex = workoutExercises.value.findIndex(ex => ex.id === exercise.id);
+        if (existingIndex !== -1) {
+            setActiveExercise(workoutExercises.value[existingIndex]);
             return;
         }
 
-        const totalSets = workoutExercises.value.reduce((sum: number, ex: any) =>
-            sum + (ex.completedSets?.length || 0), 0);
+        // Pievieno backendā
+        await axios.post(`/workout/${workoutSessionId.value}/exercises`, {
+            exercise_id: exercise.id,
+            sets_planned: 3,
+            reps_planned: 10
+        });
 
-        if (!confirm(`Vai tiešām vēlies pabeigt treniņu?\n\n` +
-            `Treniņa nosaukums: ${workoutName.value}\n` +
-            `Ilgums: ${formattedTime.value}\n` +
-            `Vingrinājumi: ${workoutExercises.value.length}\n` +
-            `Pabeigtie seti: ${totalSets}`)) {
-            return;
-        }
+        // Atjaunina visu sarakstu no servera
+        await loadWorkoutSession();
 
-        if (timerRunning.value) {
-            toggleTimer();
-        }
-
-        try {
-            if (workoutSessionId.value) {
-                // Izmantojiet pareizo maršrutu
-                const response = await axios.post(`/workout/${workoutSessionId.value}/complete`, {
-                    duration_minutes: Math.round(timer.value / 60),
-                    calories_burned: Math.round(timer.value / 60 * 5),
-                    notes: ''
-                });
-
-                // Pārbaudiet atbildi
-                console.log('Response:', response);
-
-                if (response.data.success) {
-                    localStorage.removeItem('workout_timer');
-                    localStorage.removeItem('workout_start_time');
-                    router.visit('/dashboard');
-                } else {
-                    alert('Kļūda: ' + (response.data.message || 'Nezināma kļūda'));
-                }
-            }
-        } catch (error: any) {
-            console.error('Complete workout error:', error);
-            let errorMessage = 'Kļūda pabeidzot treniņu';
-            if (error.response?.data?.message) {
-                errorMessage += ': ' + error.response.data.message;
-            } else if (error.message) {
-                errorMessage += ': ' + error.message;
-            }
-            alert(errorMessage);
-        }
-    };
-
-   const resetWorkout = async () => {
-    if (confirm('Vai tiešām vēlies atcelt treniņu? Visi dati tiks zaudēti.')) {
-        try {
-            if (workoutSessionId.value) {
-                const response = await axios.post(`/workout/${workoutSessionId.value}/cancel`);
-
-                if (response.data.success) {
-                    // Clear local data
-                    workoutExercises.value = [];
-                    activeExercise.value = null;
-                    workoutName.value = 'Brīvais treniņš - ' + new Date().toLocaleDateString('lv-LV');
-                    workoutSessionId.value = null;
-                    resetTimer();
-                    localStorage.removeItem('workout_timer');
-                    localStorage.removeItem('workout_start_time');
-
-                    // Navigate to dashboard
-                    router.visit('/dashboard');
-                } else {
-                    alert('Kļūda: ' + (response.data.message || 'Nezināma kļūda'));
-                }
-            }
-        } catch (error: any) {
-            console.error('Error canceling workout:', error);
-            let errorMessage = 'Kļūda atceļot treniņu';
-            if (error.response?.data?.message) {
-                errorMessage += ': ' + error.response.data.message;
-            } else if (error.message) {
-                errorMessage += ': ' + error.message;
-            }
-            alert(errorMessage);
+    } catch (error: any) {
+        console.error('Error adding exercise:', error);
+        if (error.response?.status === 404) {
+            await error('Treniņa sesija nav atrasta. Lūdzu, sāciet jaunu treniņu.');
+        } else {
+            await error('Kļūda pievienojot vingrinājumu: ' + (error.response?.data?.message || error.message));
         }
     }
 };
 
-    const toggleMuscleGroup = (group: string) => {
-        const index = selectedMuscleGroups.value.indexOf(group);
-        if (index > -1) {
-            selectedMuscleGroups.value.splice(index, 1);
-        } else {
-            selectedMuscleGroups.value.push(group);
+// Noņemt vingrinājumu
+const removeExercise = async (index: number) => {
+    const removedExercise = workoutExercises.value[index];
+
+    try {
+        if (removedExercise.session_exercise_id && workoutSessionId.value) {
+            await axios.delete(`/workout/${workoutSessionId.value}/exercises/${removedExercise.session_exercise_id}`);
         }
-    };
 
-    // Saglabā hronometru localStorage
-    const saveTimerToLocalStorage = () => {
-        if (timerRunning.value) {
-            localStorage.setItem('workout_timer', timer.value.toString());
-        }
-    };
+        workoutExercises.value.splice(index, 1);
 
-    // Ielādē hronometru no localStorage
-    const loadTimerFromLocalStorage = () => {
-        const savedTimer = localStorage.getItem('workout_timer');
-        const savedStartTime = localStorage.getItem('workout_start_time');
-
-        if (savedTimer && savedStartTime) {
-            const startTime = new Date(savedStartTime);
-            const now = new Date();
-            const hoursDiff = (now.getTime() - startTime.getTime()) / (1000 * 60 * 60);
-
-            if (hoursDiff < 24) {
-                const elapsedTime = calculateElapsedTime(savedStartTime);
-                timer.value = elapsedTime;
-                return true;
+        // Ja tika noņemts aktīvais vingrinājums
+        if (activeExercise.value && activeExercise.value.id === removedExercise.id) {
+            if (workoutExercises.value.length > 0) {
+                setActiveExercise(workoutExercises.value[0]);
             } else {
+                activeExercise.value = null;
+            }
+        }
+    } catch (error) {
+        console.error('Error removing exercise:', error);
+        await error('Kļūda noņemot vingrinājumu');
+    }
+};
+
+const setActiveExercise = (exercise: any) => {
+    activeExercise.value = { ...exercise };
+};
+
+const updateReps = (change: number) => {
+    if (activeExercise.value) {
+        const newReps = activeExercise.value.reps + change;
+        if (newReps >= 1 && newReps <= 50) {
+            activeExercise.value.reps = newReps;
+
+            const index = workoutExercises.value.findIndex((ex: any) => ex.id === activeExercise.value.id);
+            if (index !== -1) {
+                workoutExercises.value[index].reps = newReps;
+            }
+        }
+    }
+};
+
+const updateWeight = (change: number) => {
+    if (activeExercise.value) {
+        const newWeight = parseFloat((activeExercise.value.weight + change).toFixed(1));
+        if (newWeight >= 0) {
+            activeExercise.value.weight = newWeight;
+
+            const index = workoutExercises.value.findIndex((ex: any) => ex.id === activeExercise.value.id);
+            if (index !== -1) {
+                workoutExercises.value[index].weight = newWeight;
+            }
+        }
+    }
+};
+
+// Pabeigt setu
+const completeSet = async () => {
+    if (!activeExercise.value) return;
+
+    try {
+        const completedSet = {
+            reps: activeExercise.value.reps,
+            weight: activeExercise.value.weight,
+            completedAt: new Date().toISOString()
+        };
+
+        const index = workoutExercises.value.findIndex((ex: any) => ex.id === activeExercise.value.id);
+        if (index !== -1) {
+            // Saglabā backendā
+            if (workoutSessionId.value && workoutExercises.value[index].session_exercise_id) {
+                await axios.post(
+                    `/workout/${workoutSessionId.value}/exercises/${workoutExercises.value[index].session_exercise_id}/set`,
+                    {
+                        set_index: workoutExercises.value[index].completedSets.length,
+                        reps: completedSet.reps,
+                        weight: completedSet.weight
+                    }
+                );
+            }
+
+            // Pievieno lokāli
+            workoutExercises.value[index].completedSets.push(completedSet);
+            workoutExercises.value[index].currentSet++;
+
+            if (workoutExercises.value[index].currentSet <= workoutExercises.value[index].sets) {
+                // Atjaunina nākamo setu
+                workoutExercises.value[index].reps = 10;
+                workoutExercises.value[index].weight = 0;
+                activeExercise.value = { ...workoutExercises.value[index] };
+            } else {
+                // Pāriet uz nākamo vingrinājumu
+                const nextIndex = (index + 1) % workoutExercises.value.length;
+                if (workoutExercises.value.length > 0) {
+                    setActiveExercise(workoutExercises.value[nextIndex]);
+                } else {
+                    activeExercise.value = null;
+                }
+            }
+        }
+    } catch (error: any) {
+        console.error('Error completing set:', error);
+        await error('Kļūda saglabājot setu: ' + (error.response?.data?.message || error.message));
+    }
+};
+
+// Pabeigt treniņu
+const completeWorkout = async () => {
+    if (workoutExercises.value.length === 0) {
+        await alert({
+            title: 'Nav vingrinājumu',
+            message: 'Lūdzu, pievieno vismaz vienu vingrinājumu!',
+            type: 'error'
+        });
+        return;
+    }
+
+    // Pārbauda, vai ir pabeigts vismaz 1 sets
+    const totalCompletedSets = workoutExercises.value.reduce((sum: number, ex: any) =>
+        sum + (ex.completedSets?.length || 0), 0);
+
+    if (totalCompletedSets === 0) {
+        await alert({
+            title: 'Nav pabeigtu setu',
+            message: 'Lai pabeigtu treniņu, ir jāpabeidz vismaz 1 sets!',
+            type: 'error'
+        });
+        return;
+    }
+
+    const totalSets = workoutExercises.value.reduce((sum: number, ex: any) =>
+        sum + (ex.sets || 0), 0);
+
+    const confirmed = await confirm({
+        title: 'Pabeigt treniņu?',
+        message: `Vai tiešām vēlies pabeigt treniņu?`,
+        details: {
+            'Treniņa nosaukums': workoutName.value,
+            'Ilgums': formattedTime.value,
+            'Vingrinājumi': workoutExercises.value.length,
+            'Pabeigtie seti': totalCompletedSets,
+            'Kopējie seti': totalSets
+        },
+        confirmText: 'Jā, pabeigt',
+        cancelText: 'Nē, turpināt'
+    });
+
+    if (!confirmed) return;
+
+    if (timerRunning.value) {
+        toggleTimer();
+    }
+
+    try {
+        if (workoutSessionId.value) {
+            const response = await axios.post(`/workout/${workoutSessionId.value}/complete`, {
+                duration_minutes: Math.round(timer.value / 60),
+                calories_burned: Math.round(timer.value / 60 * 5),
+                notes: ''
+            });
+
+            if (response.data.success) {
+                await success('Tavs treniņš ir veiksmīgi pabeigts!');
                 localStorage.removeItem('workout_timer');
                 localStorage.removeItem('workout_start_time');
+                router.visit('/dashboard');
+            } else {
+                await error(response.data.message || 'Nezināma kļūda');
             }
         }
-        return false;
-    };
+    } catch (error: any) {
+        console.error('Complete workout error:', error);
+        let errorMessage = 'Kļūda pabeidzot treniņu';
+        if (error.response?.data?.message) {
+            errorMessage += ': ' + error.response.data.message;
+        } else if (error.message) {
+            errorMessage += ': ' + error.message;
+        }
+        await error(errorMessage);
+    }
+};
 
-    // ========== LIFECYCLE HOOKS ==========
-    onMounted(() => {
-        console.log('Component mounted with props:', props);
+const resetWorkout = async () => {
+    const confirmed = await confirm({
+        title: 'Atcelt treniņu?',
+        message: 'Vai tiešām vēlies atcelt treniņu? Visi dati tiks zaudēti.',
+        confirmText: 'Jā, atcelt',
+        cancelText: 'Nē'
+    });
 
-        // Mēģina ielādēt hronometru no localStorage
-        const hasSavedTimer = loadTimerFromLocalStorage();
+    if (!confirmed) return;
 
-        // Pārbauda, vai lapā ienāk ar aktīvu sesiju
-        if (props.workoutSession) {
-            workoutSessionId.value = props.workoutSession.id;
-            console.log('Workout session from props:', props.workoutSession);
+    try {
+        if (workoutSessionId.value) {
+            const response = await axios.post(`/workout/${workoutSessionId.value}/cancel`);
 
-            // Ielādē sesijas datus
-            loadWorkoutSession();
-
-            // Iestata hronometru no sesijas starta laika
-            if (props.workoutSession.started_at) {
-                const elapsedTime = calculateElapsedTime(props.workoutSession.started_at);
-                timer.value = elapsedTime;
-                console.log('Timer set from session start time:', elapsedTime);
-            }
-
-        } else if (hasSavedTimer) {
-            console.log('Timer loaded from localStorage:', timer.value);
-            if (!timerRunning.value) {
-                toggleTimer();
+            if (response.data.success) {
+                workoutExercises.value = [];
+                activeExercise.value = null;
+                workoutName.value = 'Brīvais treniņš - ' + new Date().toLocaleDateString('lv-LV');
+                workoutSessionId.value = null;
+                resetTimer();
+                localStorage.removeItem('workout_timer');
+                localStorage.removeItem('workout_start_time');
+                await success('Treniņš atcelts');
+                router.visit('/dashboard');
+            } else {
+                await error(response.data.message || 'Nezināma kļūda');
             }
         }
+    } catch (error: any) {
+        console.error('Error canceling workout:', error);
+        let errorMessage = 'Kļūda atceļot treniņu';
+        if (error.response?.data?.message) {
+            errorMessage += ': ' + error.response.data.message;
+        } else if (error.message) {
+            errorMessage += ': ' + error.message;
+        }
+        await error(errorMessage);
+    }
+};
 
-        // Sāk hronometru automātiski, ja ir sesija un nav sākts
-        if (!timerRunning.value && workoutSessionId.value) {
-            console.log('Starting timer for session:', workoutSessionId.value);
+const toggleMuscleGroup = (group: string) => {
+    const index = selectedMuscleGroups.value.indexOf(group);
+    if (index > -1) {
+        selectedMuscleGroups.value.splice(index, 1);
+    } else {
+        selectedMuscleGroups.value.push(group);
+    }
+};
+
+// Saglabā hronometru localStorage
+const saveTimerToLocalStorage = () => {
+    if (timerRunning.value) {
+        localStorage.setItem('workout_timer', timer.value.toString());
+    }
+};
+
+// Ielādē hronometru no localStorage
+const loadTimerFromLocalStorage = () => {
+    const savedTimer = localStorage.getItem('workout_timer');
+    const savedStartTime = localStorage.getItem('workout_start_time');
+
+    if (savedTimer && savedStartTime) {
+        const startTime = new Date(savedStartTime);
+        const now = new Date();
+        const hoursDiff = (now.getTime() - startTime.getTime()) / (1000 * 60 * 60);
+
+        if (hoursDiff < 24) {
+            const elapsedTime = calculateElapsedTime(savedStartTime);
+            timer.value = elapsedTime;
+            return true;
+        } else {
+            localStorage.removeItem('workout_timer');
+            localStorage.removeItem('workout_start_time');
+        }
+    }
+    return false;
+};
+
+// ========== LIFECYCLE HOOKS ==========
+onMounted(() => {
+    console.log('Component mounted with props:', props);
+
+    // Mēģina ielādēt hronometru no localStorage
+    const hasSavedTimer = loadTimerFromLocalStorage();
+
+    // Pārbauda, vai lapā ienāk ar aktīvu sesiju
+    if (props.workoutSession) {
+        workoutSessionId.value = props.workoutSession.id;
+        console.log('Workout session from props:', props.workoutSession);
+
+        // Ielādē sesijas datus
+        loadWorkoutSession();
+
+        // Iestata hronometru no sesijas starta laika
+        if (props.workoutSession.started_at) {
+            const elapsedTime = calculateElapsedTime(props.workoutSession.started_at);
+            timer.value = elapsedTime;
+            console.log('Timer set from session start time:', elapsedTime);
+        }
+
+    } else if (hasSavedTimer) {
+        console.log('Timer loaded from localStorage:', timer.value);
+        if (!timerRunning.value) {
             toggleTimer();
         }
+    }
 
-        // Saglabā timer ik pēc 30 sekundēm
-        const saveInterval = setInterval(saveTimerToLocalStorage, 30000);
+    // Sāk hronometru automātiski, ja ir sesija un nav sākts
+    if (!timerRunning.value && workoutSessionId.value) {
+        console.log('Starting timer for session:', workoutSessionId.value);
+        toggleTimer();
+    }
 
-        // Notīrām intervālu, kad komponents tiek noņemts
-        return () => {
-            clearInterval(saveInterval);
-            if (timerInterval) {
-                clearInterval(timerInterval);
-            }
-        };
-    });
+    // Saglabā timer ik pēc 30 sekundēm
+    const saveInterval = setInterval(saveTimerToLocalStorage, 30000);
 
-    // Saglabā timer, kad tas mainās
-    watch(timer, () => {
-        if (timerRunning.value && timer.value % 30 === 0) {
-            saveTimerToLocalStorage();
-        }
-    });
-
-    onUnmounted(() => {
+    // Notīrām intervālu, kad komponents tiek noņemts
+    return () => {
+        clearInterval(saveInterval);
         if (timerInterval) {
             clearInterval(timerInterval);
         }
-    });
+    };
+});
+
+// Saglabā timer, kad tas mainās
+watch(timer, () => {
+    if (timerRunning.value && timer.value % 30 === 0) {
+        saveTimerToLocalStorage();
+    }
+});
+
+onUnmounted(() => {
+    if (timerInterval) {
+        clearInterval(timerInterval);
+    }
+});
 </script>
 
 <template>
@@ -780,24 +810,13 @@
                 </div>
             </div>
         </div>
+
+        <!-- Modal komponents -->
+        <Modal ref="modalRef" />
     </AppLayout>
 </template>
 
 <style scoped>
-
-    .dashboard-container {
-        min-height: 100vh;
-        background-color: #f3f4f6;
-    }
-
-    .dashboard {
-        max-width: 1400px;
-        margin: 0 auto;
-        padding: 1.5rem;
-    }
-
-
-    /* Galvenie stili */
     .dashboard-container {
         min-height: 100vh;
         background-color: #f3f4f6;

@@ -166,6 +166,9 @@ class RoutineController extends Controller
         return response()->json($routine);
     }
 
+    /**
+     * Set a routine as active for the current user
+     */
     public function setActive(Routine $routine)
     {
         $user = auth()->user();
@@ -182,11 +185,11 @@ class RoutineController extends Controller
             ], 403);
         }
         
-        // Save active routine ID in session
-        session(['activeRoutine' => $routine->id]);
+        // Save active routine in database (not session)
+        $user->active_routine_id = $routine->id;
+        $user->save();
         
         Log::info('RoutineController: Setting active routine - ID: ' . $routine->id . ', User: ' . $user->id);
-        Log::info('Session ID: ' . session()->getId());
         
         // Load routine with all necessary data for frontend
         $routine->load(['exercises' => function($query) {
@@ -231,7 +234,10 @@ class RoutineController extends Controller
         ]);
     }
 
-    public function getActiveRoutineData(Routine $routine)
+    /**
+     * Clear the active routine for the current user
+     */
+    public function clearActive()
     {
         $user = auth()->user();
         
@@ -239,23 +245,52 @@ class RoutineController extends Controller
             return response()->json(['error' => 'Not authenticated'], 401);
         }
         
-        // Check access
-        if ($routine->user_id !== $user->id && !$routine->is_public) {
-            return response()->json(['error' => 'No access'], 403);
+        // Clear active routine from database (not session)
+        $user->active_routine_id = null;
+        $user->save();
+        
+        Log::info('RoutineController: Clearing active routine for User: ' . $user->id);
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Aktīvā rutīna notīrīta'
+        ]);
+    }
+
+    /**
+     * Get the current user's active routine data
+     */
+    public function getActiveRoutine()
+    {
+        $user = auth()->user();
+        
+        if (!$user) {
+            return response()->json(['error' => 'Not authenticated'], 401);
+        }
+        
+        $activeRoutine = $user->activeRoutine;
+        
+        if (!$activeRoutine) {
+            return response()->json([
+                'success' => true,
+                'active_routine' => null
+            ]);
         }
         
         // Load routine with exercises
-        $routine->load(['exercises' => function($query) {
-            $query->withPivot(['day_number', 'sets', 'reps', 'rest_seconds', 'notes']);
+        $activeRoutine->load(['exercises' => function($query) {
+            $query->withPivot(['day_number', 'sets', 'reps', 'rest_seconds', 'notes'])
+                  ->orderBy('exercise_routine.day_number');
         }]);
         
-        return response()->json([
-            'id' => $routine->id,
-            'name' => $routine->name,
-            'description' => $routine->description,
-            'is_public' => $routine->is_public,
-            'exercises_count' => $routine->exercises->count(),
-            'exercises' => $routine->exercises->map(function($exercise) {
+        $formattedRoutine = [
+            'id' => $activeRoutine->id,
+            'name' => $activeRoutine->name,
+            'description' => $activeRoutine->description,
+            'is_public' => $activeRoutine->is_public,
+            'user_id' => $activeRoutine->user_id,
+            'exercises_count' => $activeRoutine->exercises->count(),
+            'exercises' => $activeRoutine->exercises->map(function($exercise) {
                 return [
                     'id' => $exercise->id,
                     'name' => $exercise->name,
@@ -274,6 +309,11 @@ class RoutineController extends Controller
                     ]
                 ];
             })->toArray()
+        ];
+        
+        return response()->json([
+            'success' => true,
+            'active_routine' => $formattedRoutine
         ]);
     }
 
@@ -351,24 +391,5 @@ class RoutineController extends Controller
         }
         
         return redirect()->route('routines.my')->with('success', 'Rutīna veiksmīgi atjaunināta!');
-    }
-
-    public function clearActive()
-    {
-        $user = auth()->user();
-        
-        if (!$user) {
-            return response()->json(['error' => 'Not authenticated'], 401);
-        }
-        
-        // Clear active routine from session
-        session()->forget('activeRoutine');
-        
-        Log::info('RoutineController: Clearing active routine for User: ' . $user->id);
-        
-        return response()->json([
-            'success' => true,
-            'message' => 'Aktīvā rutīna notīrīta'
-        ]);
     }
 }

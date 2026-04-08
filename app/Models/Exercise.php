@@ -15,6 +15,7 @@ class Exercise extends Model
         'equipment',
         'instructions',
         'difficulty',
+        'image', 
     ];
     
     /**
@@ -59,5 +60,44 @@ class Exercise extends Model
             ->orderBy('weight', 'desc')
             ->orderBy('reps', 'desc')
             ->first();
+    }
+    
+    /**
+     * Get the full URL for the exercise image
+     */
+    public function getImageUrlAttribute()
+    {
+        if ($this->image) {
+            // Check if it's a full URL (starts with http:// or https://)
+            if (filter_var($this->image, FILTER_VALIDATE_URL)) {
+                return $this->image;
+            }
+            // If it's a local path, generate storage URL
+            return asset('storage/' . $this->image);
+        }
+        
+        // Return default placeholder based on muscle group
+        return $this->getDefaultImage();
+    }
+    
+    /**
+     * Get default placeholder image based on muscle group
+     */
+    protected function getDefaultImage()
+    {
+        $defaultImages = [
+            'Krūtis' => '/images/defaults/chest.jpg',
+            'Mugura' => '/images/defaults/back.jpg',
+            'Kājas' => '/images/defaults/legs.jpg',
+            'Pleci' => '/images/defaults/shoulders.jpg',
+            'Rokas' => '/images/defaults/arms.jpg',
+            'Korsete' => '/images/defaults/core.jpg',
+            'Kardio' => '/images/defaults/cardio.jpg',
+            'Pilns ķermenis' => '/images/defaults/fullbody.jpg',
+        ];
+        
+        $defaultImage = $defaultImages[$this->muscle_group] ?? '/images/defaults/exercise.jpg';
+        
+        return asset($defaultImage);
     }
 }

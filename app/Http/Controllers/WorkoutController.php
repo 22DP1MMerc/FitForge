@@ -285,7 +285,7 @@ public function completeWorkout(Request $request, WorkoutSession $workoutSession
     }
     
     $request->validate([
-        'duration_minutes' => 'required|integer|min:1',
+        'duration_minutes' => 'required|integer|min:0',
         'calories_burned' => 'nullable|integer|min:0',
         'notes' => 'nullable|string',
     ]);
@@ -302,8 +302,8 @@ public function completeWorkout(Request $request, WorkoutSession $workoutSession
     // 2. Izveido PILNĪGU WorkoutLog ierakstu
     $workoutLog = WorkoutLog::create([
         'user_id' => $user->id,
-        'workout_session_id' => $workoutSession->id, // ✅ Svarīgi!
-        'routine_id' => $workoutSession->routine_id, // ✅ Svarīgi!
+        'workout_session_id' => $workoutSession->id, 
+        'routine_id' => $workoutSession->routine_id, 
         'name' => $workoutSession->name,
         'duration_minutes' => $request->duration_minutes,
         'calories_burned' => $request->calories_burned,
@@ -343,7 +343,7 @@ public function cancelWorkout(WorkoutSession $workoutSession)
     
     $workoutSession->update([
         'status' => 'cancelled',
-        'ended_at' => Carbon::now(), // Changed from 'completed_at' to 'ended_at' to match your schema
+        'ended_at' => Carbon::now(), 
     ]);
     
     return response()->json([

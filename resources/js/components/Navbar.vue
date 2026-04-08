@@ -23,7 +23,7 @@
                               :href="route('admin.users')"
                               class="nav-link">
                         <Users class="nav-icon" />
-                        Admin Panel
+                        Administratora panelis
                         </Link>
                     </li>
                 </ul>

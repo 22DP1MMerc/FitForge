@@ -360,135 +360,121 @@ private function calculateCurrentStreak($user)
         return array_slice($activities, 0, 3);
     }
 
-    public function getActiveRoutine($user)
-    {
-        // Mēģinām iegūt aktīvo rutīnu no sesijas
-        $activeRoutineId = session('activeRoutine');
+    private function getActiveRoutine($user)
+{
+    // Get active routine from user model instead of session
+    $activeRoutine = $user->activeRoutine;
+    
+    \Log::info('DashboardController: Checking active routine - ID: ' . ($activeRoutine ? $activeRoutine->id : 'null'));
+    
+    if ($activeRoutine) {
+        // Load the exercises relationship
+        $activeRoutine->load(['exercises' => function($query) {
+            $query->withPivot(['day_number', 'sets', 'reps', 'rest_seconds', 'notes'])
+                  ->orderBy('exercise_routine.day_number');
+        }]);
         
-        \Log::info('DashboardController: Checking active routine - ID: ' . ($activeRoutineId ?? 'null'));
+        \Log::info('DashboardController: Found active routine - Name: ' . $activeRoutine->name);
         
-        if ($activeRoutineId) {
-            $activeRoutine = Routine::where(function($query) use ($user) {
-                    $query->where('user_id', $user->id)
-                          ->orWhere('is_public', true);
-                })
-                ->where('id', $activeRoutineId)
-                ->with(['exercises' => function($query) {
-                    $query->withPivot(['day_number', 'sets', 'reps', 'rest_seconds', 'notes'])
-                          ->orderBy('exercise_routine.day_number');
-                }])
-                ->first();
-            
-            if ($activeRoutine) {
-                \Log::info('DashboardController: Found active routine - Name: ' . $activeRoutine->name);
-                
-                // Formatējam datus, lai tie būtu saderīgi ar frontend
-                $formattedRoutine = [
-                    'id' => $activeRoutine->id,
-                    'name' => $activeRoutine->name,
-                    'description' => $activeRoutine->description,
-                    'is_public' => $activeRoutine->is_public,
-                    'user_id' => $activeRoutine->user_id,
-                    'exercises_count' => $activeRoutine->exercises->count(),
-                    'exercises' => $activeRoutine->exercises->map(function($exercise) {
-                        return [
-                            'id' => $exercise->id,
-                            'name' => $exercise->name,
-                            'muscle_group' => $exercise->muscle_group,
-                            'description' => $exercise->description,
-                            'day_number' => $exercise->pivot->day_number,
-                            'sets' => $exercise->pivot->sets,
-                            'reps' => $exercise->pivot->reps,
-                            'rest_seconds' => $exercise->pivot->rest_seconds,
-                            'notes' => $exercise->pivot->notes,
-                            'pivot' => [
-                                'day_number' => $exercise->pivot->day_number,
-                                'sets' => $exercise->pivot->sets,
-                                'reps' => $exercise->pivot->reps,
-                                'rest_seconds' => $exercise->pivot->rest_seconds,
-                                'notes' => $exercise->pivot->notes
-                            ]
-                        ];
-                    })->toArray()
+        // Format the data for frontend compatibility
+        $formattedRoutine = [
+            'id' => $activeRoutine->id,
+            'name' => $activeRoutine->name,
+            'description' => $activeRoutine->description,
+            'is_public' => $activeRoutine->is_public,
+            'user_id' => $activeRoutine->user_id,
+            'exercises_count' => $activeRoutine->exercises->count(),
+            'exercises' => $activeRoutine->exercises->map(function($exercise) {
+                return [
+                    'id' => $exercise->id,
+                    'name' => $exercise->name,
+                    'muscle_group' => $exercise->muscle_group,
+                    'description' => $exercise->description,
+                    'day_number' => $exercise->pivot->day_number,
+                    'sets' => $exercise->pivot->sets,
+                    'reps' => $exercise->pivot->reps,
+                    'rest_seconds' => $exercise->pivot->rest_seconds,
+                    'notes' => $exercise->pivot->notes,
+                    'pivot' => [
+                        'day_number' => $exercise->pivot->day_number,
+                        'sets' => $exercise->pivot->sets,
+                        'reps' => $exercise->pivot->reps,
+                        'rest_seconds' => $exercise->pivot->rest_seconds,
+                        'notes' => $exercise->pivot->notes
+                    ]
                 ];
-                
-                \Log::info('DashboardController: Formatted routine exercises count: ' . count($formattedRoutine['exercises']));
-                return $formattedRoutine;
-            } else {
-                \Log::warning('DashboardController: Active routine not found for ID: ' . $activeRoutineId);
-            }
-        } else {
-            \Log::info('DashboardController: No active routine ID in session');
-        }
+            })->toArray()
+        ];
         
-        return null;
+        \Log::info('DashboardController: Formatted routine exercises count: ' . count($formattedRoutine['exercises']));
+        return $formattedRoutine;
+    } else {
+        \Log::info('DashboardController: No active routine found for user');
     }
+    
+    return null;
+}
 
     private function getWeeklySchedule($user)
-    {
-        $schedule = [];
-        $days = ['Pirmdiena', 'Otrdiena', 'Trešdiena', 'Ceturtdiena', 'Piektdiena', 'Sestdiena', 'Svētdiena'];
-        
-        // 1. Aktīvā rutīna
-        $activeRoutine = null;
-        $activeRoutineId = session('activeRoutine');
-        
-        if ($activeRoutineId) {
-            // Aktīvā var būt jebkura rutīna (publiska vai lietotāja)
-            $activeRoutine = Routine::where(function($query) use ($user) {
-                    $query->where('user_id', $user->id)
-                          ->orWhere('is_public', true);
-                })
-                ->where('id', $activeRoutineId)
-                ->with(['exercises' => function($query) {
-                    $query->withPivot('day_number');
-                }])
-                ->first();
-        }
-        
-        // 2. Lietotāja un publiskās rutīnas
-        $allRoutines = Routine::where(function($query) use ($user) {
-                $query->where('user_id', $user->id)
-                      ->orWhere('is_public', true);
-            })
-            ->with(['exercises' => function($query) {
+{
+    $schedule = [];
+    $days = ['Pirmdiena', 'Otrdiena', 'Trešdiena', 'Ceturtdiena', 'Piektdiena', 'Sestdiena', 'Svētdiena'];
+    
+    // 1. Get user's active routine from database
+    $activeRoutine = $user->activeRoutine;
+    
+    if ($activeRoutine) {
+        // Load exercises if not already loaded
+        if (!$activeRoutine->relationLoaded('exercises')) {
+            $activeRoutine->load(['exercises' => function($query) {
                 $query->withPivot('day_number');
-            }])
-            ->get();
+            }]);
+        }
+    }
+    
+    // 2. User's and public routines
+    $allRoutines = Routine::where(function($query) use ($user) {
+            $query->where('user_id', $user->id)
+                  ->orWhere('is_public', true);
+        })
+        ->with(['exercises' => function($query) {
+            $query->withPivot('day_number');
+        }])
+        ->get();
+    
+    for ($dayNumber = 1; $dayNumber <= 7; $dayNumber++) {
+        $routineForDay = null;
+        $isActiveRoutineDay = false;
+        $workoutName = 'Atpūtas diena';
         
-        for ($dayNumber = 1; $dayNumber <= 7; $dayNumber++) {
-            $routineForDay = null;
-            $isActiveRoutineDay = false;
-            $workoutName = 'Atpūtas diena';
+        // A. First priority: active routine
+        if ($activeRoutine) {
+            $hasExercisesForDay = $activeRoutine->exercises
+                ->contains(function($exercise) use ($dayNumber) {
+                    return $exercise->pivot->day_number == $dayNumber;
+                });
             
-            // A. Pirmā prioritāte: aktīvā rutīna
-            if ($activeRoutine) {
-                $hasExercisesForDay = $activeRoutine->exercises
-                    ->contains(function($exercise) use ($dayNumber) {
-                        return $exercise->pivot->day_number == $dayNumber;
-                    });
-                
-                if ($hasExercisesForDay) {
-                    $routineForDay = $activeRoutine;
-                    $workoutName = $activeRoutine->name;
-                    $isActiveRoutineDay = true;
-                }
+            if ($hasExercisesForDay) {
+                $routineForDay = $activeRoutine;
+                $workoutName = $activeRoutine->name;
+                $isActiveRoutineDay = true;
             }
-            
-            $schedule[] = [
-                'id' => $dayNumber,
-                'day_name' => $days[$dayNumber - 1],
-                'day_number' => $dayNumber,
-                'workout_name' => $workoutName,
-                'routine_id' => $routineForDay ? $routineForDay->id : null,
-                'is_active_routine' => $isActiveRoutineDay,
-                'has_workout' => $routineForDay !== null,
-                'is_rest_day' => $routineForDay === null
-            ];
         }
         
-        return $schedule;
+        $schedule[] = [
+            'id' => $dayNumber,
+            'day_name' => $days[$dayNumber - 1],
+            'day_number' => $dayNumber,
+            'workout_name' => $workoutName,
+            'routine_id' => $routineForDay ? $routineForDay->id : null,
+            'is_active_routine' => $isActiveRoutineDay,
+            'has_workout' => $routineForDay !== null,
+            'is_rest_day' => $routineForDay === null
+        ];
     }
+    
+    return $schedule;
+}
 
     private function getWeeklyWeightStats($user)
     {

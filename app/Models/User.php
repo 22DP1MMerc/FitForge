@@ -65,6 +65,11 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(Routine::class);
     }
 
+     public function activeRoutine()
+    {
+        return $this->belongsTo(Routine::class, 'active_routine_id');
+    }
+
     /**
      * Get the goals for the user.
      */

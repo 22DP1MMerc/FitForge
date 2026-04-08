@@ -13,20 +13,33 @@
     const muscleGroupFilter = ref(props.filters.muscle_group || '');
     const equipmentFilter = ref(props.filters.equipment || '');
 
+    // Image loading state
+    const imageErrors = ref({});
+
     const formatWeight = (weight) => {
         if (!weight && weight !== 0) return '0';
 
-        // Pārbaudām, vai ir decimāldaļa .00
         const num = parseFloat(weight);
         if (isNaN(num)) return '0';
 
-        // Ja skaitlis ir vesels (bez decimāldaļas vai decimāldaļa ir .00)
         if (num % 1 === 0) {
             return num.toString();
         }
 
-        // Ja ir decimāldaļa, parādam ar 1 ciparu aiz komata
         return num.toFixed(1);
+    };
+
+    // Handle image loading errors
+    const handleImageError = (exerciseId) => {
+        imageErrors.value[exerciseId] = true;
+    };
+
+    // Get display image URL (fallback to placeholder if error)
+    const getImageUrl = (exercise) => {
+        if (imageErrors.value[exercise.id]) {
+            return '/images/defaults/exercise-placeholder.jpg';
+        }
+        return exercise.image_url || '/images/defaults/exercise-placeholder.jpg';
     };
 
     watch([muscleGroupFilter, equipmentFilter], () => {
@@ -82,10 +95,22 @@
 
                     <div class="exercises-grid">
                         <div v-for="exercise in exercises" :key="exercise.id" class="exercise-card">
+                            <!-- Exercise Image -->
+                            <div class="exercise-image-container">
+                                <img :src="getImageUrl(exercise)"
+                                     :alt="exercise.name"
+                                     class="exercise-image"
+                                     @error="handleImageError(exercise.id)"
+                                     loading="lazy" />
+                                <div class="difficulty-badge" v-if="exercise.difficulty">
+                                    {{ exercise.difficulty }}
+                                </div>
+                            </div>
+
                             <h2>{{ exercise.name }}</h2>
                             <p class="exercise-description">{{ exercise.description }}</p>
 
-                            <!-- Personal Record Section - SIMPLIFIED FORMAT -->
+                            <!-- Personal Record Section -->
                             <div v-if="exercise.personal_records && exercise.personal_records.length > 0"
                                  class="personal-record-simple">
                                 <span class="pr-label">PR: </span>
@@ -197,7 +222,7 @@
 
     .exercises-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
         gap: 1.5rem;
     }
 
@@ -205,7 +230,7 @@
         background: white;
         border: 1px solid #e5e7eb;
         border-radius: 0.75rem;
-        padding: 1.5rem;
+        overflow: hidden;
         transition: all 0.2s ease;
         box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.05);
         display: flex;
@@ -217,84 +242,87 @@
             box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.1);
         }
 
-        .exercise-card h2 {
-            font-size: 1.25rem;
-            font-weight: 600;
-            color: #111827;
-            margin: 0 0 0.75rem 0;
-        }
+    /* Image Container Styles */
+    .exercise-image-container {
+        position: relative;
+        width: 100%;
+        height: 200px;
+        overflow: hidden;
+        background-color: #f3f4f6;
+    }
+
+    .exercise-image {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transition: transform 0.3s ease;
+    }
+
+    .exercise-card:hover .exercise-image {
+        transform: scale(1.05);
+    }
+
+    .difficulty-badge {
+        position: absolute;
+        top: 0.75rem;
+        right: 0.75rem;
+        background: rgba(0, 0, 0, 0.75);
+        backdrop-filter: blur(4px);
+        color: white;
+        padding: 0.25rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 500;
+        text-transform: capitalize;
+        z-index: 1;
+    }
+
+    .exercise-card h2 {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: #111827;
+        margin: 1rem 1rem 0.75rem 1rem;
+    }
 
     .exercise-description {
         color: #6b7280;
         font-size: 0.875rem;
-        margin: 0 0 1rem 0;
+        margin: 0 1rem 1rem 1rem;
         line-height: 1.5;
         flex-grow: 1;
     }
 
-    .personal-record {
-        background: #f0f9ff;
-        border: 1px solid #0ea5e9;
+    .personal-record-simple {
+        margin: 0 1rem 1rem 1rem;
+        padding: 0.5rem;
+        background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
         border-radius: 0.5rem;
-        padding: 0.75rem;
-        margin-bottom: 1rem;
-        display: flex;
-        align-items: flex-start;
-        gap: 0.75rem;
+        text-align: center;
     }
 
-    .record-icon {
-        color: #0ea5e9;
-        flex-shrink: 0;
-        margin-top: 0.125rem;
-    }
-
-        .record-icon svg {
-            width: 1.25rem;
-            height: 1.25rem;
-        }
-
-    .record-details {
-        flex: 1;
-    }
-
-    .record-title {
-        font-size: 0.75rem;
+    .pr-label {
         font-weight: 600;
-        color: #0369a1;
+        color: #92400e;
+        font-size: 0.75rem;
         text-transform: uppercase;
         letter-spacing: 0.05em;
-        margin-bottom: 0.25rem;
     }
 
-    .record-data {
-        display: flex;
-        align-items: baseline;
-        gap: 0.5rem;
-        margin-bottom: 0.25rem;
-    }
-
-    .record-weight {
-        font-size: 1.125rem;
+    .pr-value {
         font-weight: 700;
-        color: #111827;
+        color: #78350f;
+        font-size: 1rem;
     }
 
-    .record-info {
-        font-size: 0.875rem;
-        color: #4b5563;
-    }
-
-    .record-date {
-        font-size: 0.75rem;
-        color: #6b7280;
-        font-style: italic;
+    .pr-times {
+        font-weight: 600;
+        margin: 0 0.25rem;
     }
 
     .exercise-tags {
         display: flex;
         gap: 0.5rem;
-        margin-top: auto;
+        margin: 0 1rem 1rem 1rem;
     }
 
     .muscle-tag {
@@ -349,4 +377,18 @@
             color: #9a3412;
             text-decoration: underline;
         }
+
+    @media (max-width: 768px) {
+        .exercises-content {
+            padding: 1rem;
+        }
+
+        .exercises-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .exercise-image-container {
+            height: 180px;
+        }
+    }
 </style>
