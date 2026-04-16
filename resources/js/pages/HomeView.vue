@@ -1,262 +1,518 @@
 <script setup>
-    import { Link } from '@inertiajs/vue3'
-    import AppLayout from '@/layouts/AppLayout.vue'
-    import { usePage } from '@inertiajs/vue3';
+import { Link } from '@inertiajs/vue3'
+import AppLayout from '@/layouts/AppLayout.vue'
+import { usePage } from '@inertiajs/vue3';
 
-    const { auth } = usePage().props;
+const { auth } = usePage().props;
 </script>
 
 <template>
     <AppLayout>
         <main>
+            <!-- Hero Section -->
             <section class="hero">
-                <h2>Veido savu fitnesa nākotni jau šodien</h2>
-                <p class="hero-subtitle">Pārveido savus treniņus</p>
-                <Link href="/login" class="nav-link"><button class="cta-button">Sāc tagad - tas ir bez maksas</button></Link>
-                <div class="hero-stats">
-                    <div class="stat-item">
-                        <span class="stat-number">95%</span>
-                        <span class="stat-label">Lietotāju apmierinātība</span>
+                <div class="hero-content">
+                    <div class="logo-badge">
+                        <span class="logo-icon">🏋️</span>
+                        <span class="logo-text">FitForge</span>
                     </div>
-                    <div class="stat-item">
-                        <span class="stat-number">2.5x</span>
-                        <span class="stat-label">Ātrāka progresija</span>
+                    <h1>Treniņu un fiziskās aktivitātes <span class="highlight">uzskaites sistēma</span></h1>
+                    <p class="hero-subtitle">
+                        Personalizēti treniņu plāni, progresa izsekošana un personīgo rekordu uzskaite
+                    </p>
+                    <div class="hero-buttons">
+                        <Link href="/register" class="btn btn-primary">Izveidot profilu</Link>
+                        <Link href="/exercises" class="btn btn-outline">Vingrinājumu katalogs</Link>
                     </div>
-                    <div class="stat-item">
-                        <span class="stat-number">30 dienas</span>
-                        <span class="stat-label">Līdz redzamām izmaiņām</span>
+
+                    <!-- Funkciju pārskats -->
+                    <div class="feature-highlights">
+                        <div class="highlight-item">
+                            <span>✓</span>
+                            <span>Treniņu rutīnu veidošana</span>
+                        </div>
+                        <div class="highlight-item">
+                            <span>✓</span>
+                            <span>Sesiju reģistrēšana</span>
+                        </div>
+                        <div class="highlight-item">
+                            <span>✓</span>
+                            <span>Personīgie rekordi</span>
+                        </div>
+                        <div class="highlight-item">
+                            <span>✓</span>
+                            <span>Mērķu izvirzīšana</span>
+                        </div>
                     </div>
                 </div>
             </section>
 
-            <section class="features">
-                <h3>Kāpēc izvēlēties FitForge?</h3>
-                <p class="section-intro">Mēs apvienojam modernāko tehnoloģiju ar pierādītu fitnesa zinātni, lai nodrošinātu rezultātus</p>
-                <div class="feature-grid">
-                    <div class="feature-card">
-                        <h4>Tevi, bet stiprāku 💪</h4>
-                        <p>Mūsu adaptīvie algoritmi veido personalizētus plānus, kas attīstās līdz ar jūsu progresu, nodrošinot nepārtrauktu izaicinājumu un izaugsmi.</p>
+            <!-- Galvenās funkcijas (atbilstoši 2.2. funkcionālajām prasībām) -->
+            <section class="functions">
+                <h2>Sistēmas funkcionalitāte</h2>
+                <p class="section-intro">FitForge nodrošina pilnu treniņu procesa ciklu - no plānošanas līdz rezultātu analīzei</p>
+
+                <div class="functions-grid">
+
+                    <!-- Treniņu plānošana -->
+                    <div class="function-group">
+                        <div class="group-header">
+                            <div class="group-icon">📋</div>
+                            <h3>Treniņu plānošana</h3>
+                        </div>
+                        <ul class="function-list">
+                            <li>Jaunu rutīnu izveide</li>
+                            <li>Vingrinājumu pievienošana rutīnai</li>
+                            <li>Pieeju un atkārtojumu plānošana</li>
+                            <li>Rutīnu publiskošana</li>
+                            <li>Vingrinājumu kataloga pārlūkošana</li>
+                        </ul>
                     </div>
-                    <div class="feature-card">
-                        <h4>Vienmēr jūsu pusē 👟</h4>
-                        <p>No iesācēja modifikācijām līdz profesionālām tehnikām - mēs sniedzam norādījumus katram fitnesa līmenim un katrai treniņa dienai.</p>
+
+                    <!-- Treniņu izpilde -->
+                    <div class="function-group">
+                        <div class="group-header">
+                            <div class="group-icon">🏃</div>
+                            <h3>Treniņu izpilde</h3>
+                        </div>
+                        <ul class="function-list">
+                            <li>Treniņu sesiju reģistrēšana</li>
+                            <li>Faktisko rezultātu fiksēšana</li>
+                            <li>Izmantotā svara uzskaite</li>
+                            <li>Automātiska rekordu atpazīšana</li>
+                            <li>Treniņu ilguma aprēķins</li>
+                        </ul>
                     </div>
-                    <div class="feature-card">
-                        <h4>Veidots reālai dzīvei 🌍</h4>
-                        <p>Ātri 15 minūšu treniņi, iespējas bez aprīkojuma un ceļojumiem draudzīgas rutīnas, kas iederas jūsu aizņemtajā grafikā.</p>
+
+                    <!-- Progresa uzskaite -->
+                    <div class="function-group">
+                        <div class="group-header">
+                            <div class="group-icon">📊</div>
+                            <h3>Progresa uzskaite</h3>
+                        </div>
+                        <ul class="function-list">
+                            <li>Treniņu vēstures apskate</li>
+                            <li>Personīgo rekordu saraksts</li>
+                            <li>Mērķu izvirzīšana</li>
+                            <li>Kopsavilkuma statistika</li>
+                            <li>Progresa vizualizācija</li>
+                        </ul>
                     </div>
                 </div>
             </section>
 
-            <section class="testimonials">
-                <h3>Veiksma stāsti</h3>
-                <div class="testimonial-grid">
-                    <div class="testimonial-card">
-                        <p class="quote">"Zaudēju 11 kg 3 mēnešos ar rutīnām, kas faktiski iederējās manā darba grafikā!"</p>
-                        <p class="author">- Sāra K., skolotāja</p>
-                    </div>
-                    <div class="testimonial-card">
-                        <p class="quote">"Beidzot atradu programmu, kas pielāgojās manam ceļa savainojumam, vienlaikus palīdzot man attīstīties"</p>
-                        <p class="author">- Maikls T., veterāns</p>
-                    </div>
-                </div>
-            </section>
 
+            <!-- Reģistrācijas aicinājums -->
             <section class="cta-section">
-                <h3>Gatavs pārveidot savu fitnesa ceļojumu?</h3>
-                <p>Pievienojieties mūsu kopienai jau šodien!</p>
-                <Link href="/register" class="nav-link"><button class="cta-button secondary">Sākt tagad</button></Link>
+                <h3>Sāc dokumentēt savus treniņus jau šodien</h3>
+                <p>Reģistrējies bez maksas un iegūsti pilnu kontroli pār savu fitnesa progresu</p>
+                <div class="cta-buttons">
+                    <Link href="/register" class="btn btn-primary btn-large">Izveidot profilu</Link>
+                    <Link href="/login" class="btn btn-outline-light">Pieteikties</Link>
+                </div>
+                <p class="small-note">Bezmaksas profils ietver: treniņu plānu veidošanu, sesiju reģistrēšanu un personīgos rekordus</p>
             </section>
         </main>
     </AppLayout>
 </template>
 
-<style>
-    @media (min-width: 1024px) {
-        .main {
-            min-height: 100vh;
-        }
-
-        img {
-            display: block;
-            margin-left: auto;
-            margin-right: auto;
-            width: 40%;
-        }
-    }
-
-    body {
-        font-family: 'Segoe UI', Arial, sans-serif;
+<style scoped>
+    * {
         margin: 0;
         padding: 0;
-        line-height: 1.6;
+        box-sizing: border-box;
     }
 
+    main {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        line-height: 1.5;
+        color: #1a1a1a;
+    }
+
+    /* Hero Section */
     .hero {
-        text-align: center;
-        padding: 120px 10% 80px;
-        background-image: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)), url("home_back.webp");
-        background-size: cover;
-        background-position: center;
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
         color: white;
+        padding: 60px 10% 80px;
     }
 
-        .hero h2 {
-            font-size: 2.8rem;
-            margin-bottom: 1rem;
-            line-height: 1.2;
-        }
+    .hero-content {
+        max-width: 900px;
+        margin: 0 auto;
+        text-align: center;
+    }
+
+    .logo-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(255,255,255,0.1);
+        padding: 8px 20px;
+        border-radius: 40px;
+        margin-bottom: 2rem;
+    }
+
+    .logo-icon {
+        font-size: 1.25rem;
+    }
+
+    .logo-text {
+        font-weight: 600;
+        letter-spacing: 1px;
+    }
+
+    .hero h1 {
+        font-size: 2.8rem;
+        font-weight: 700;
+        line-height: 1.2;
+        margin-bottom: 1.5rem;
+    }
+
+    .highlight {
+        color: #f97316;
+    }
 
     .hero-subtitle {
-        font-size: 1.3rem;
-        max-width: 700px;
-        margin: 0 auto 2rem;
+        font-size: 1.25rem;
         opacity: 0.9;
+        margin-bottom: 2rem;
+        max-width: 600px;
+        margin-left: auto;
+        margin-right: auto;
     }
 
-    .hero-stats {
+    .hero-buttons {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        flex-wrap: wrap;
+        margin-bottom: 3rem;
+    }
+
+    .feature-highlights {
         display: flex;
         justify-content: center;
-        gap: 3rem;
-        margin-top: 3rem;
+        gap: 2rem;
         flex-wrap: wrap;
+        padding-top: 2rem;
+        border-top: 1px solid rgba(255,255,255,0.1);
     }
 
-    .stat-item {
+    .highlight-item {
         display: flex;
-        flex-direction: column;
-    }
-
-    .stat-number {
-        font-size: 2rem;
-        font-weight: bold;
-        color: #ff5733;
-    }
-
-    .stat-label {
+        align-items: center;
+        gap: 8px;
         font-size: 0.9rem;
-        opacity: 0.8;
     }
 
-    .cta-button {
-        margin-top: 20px;
-        padding: 14px 32px;
-        font-size: 1.1rem;
-        color: white;
-        background: #ff5733;
-        border: none;
-        cursor: pointer;
-        border-radius: 30px;
-        font-weight: 600;
-        transition: all 0.3s ease;
+        .highlight-item span:first-child {
+            color: #22c55e;
+            font-weight: bold;
+        }
+
+    /* Buttons */
+    .btn {
         display: inline-block;
+        padding: 12px 28px;
+        border-radius: 8px;
+        font-weight: 600;
+        text-decoration: none;
+        transition: all 0.2s ease;
+        cursor: pointer;
+        font-size: 1rem;
     }
 
-        .cta-button:hover {
-            background: #e64a19;
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(230, 74, 25, 0.3);
+    .btn-primary {
+        background: #f97316;
+        color: white;
+        border: none;
+    }
+
+        .btn-primary:hover {
+            background: #ea580c;
+            transform: translateY(-1px);
         }
 
-        .cta-button.secondary {
-            background: transparent;
-            border: 2px solid white;
-            margin-top: 1rem;
+    .btn-outline {
+        background: transparent;
+        color: white;
+        border: 1px solid rgba(255,255,255,0.3);
+    }
+
+        .btn-outline:hover {
+            background: rgba(255,255,255,0.1);
+            border-color: rgba(255,255,255,0.5);
         }
 
-            .cta-button.secondary:hover {
-                background: rgba(255,255,255,0.1);
-            }
+    .btn-outline-light {
+        background: transparent;
+        color: white;
+        border: 1px solid rgba(255,255,255,0.3);
+    }
 
-    .features {
-        text-align: center;
+        .btn-outline-light:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+    .btn-secondary {
+        background: #f1f5f9;
+        color: #1e293b;
+    }
+
+        .btn-secondary:hover {
+            background: #e2e8f0;
+        }
+
+    .btn-large {
+        padding: 14px 36px;
+        font-size: 1.125rem;
+    }
+
+    /* Functions Section */
+    .functions {
         padding: 80px 10%;
         background: white;
+        text-align: center;
     }
+
+        .functions h2 {
+            font-size: 2.25rem;
+            margin-bottom: 1rem;
+        }
 
     .section-intro {
+        font-size: 1.125rem;
+        color: #64748b;
         max-width: 700px;
         margin: 0 auto 3rem;
-        color: #555;
-        font-size: 1.1rem;
     }
 
-    .feature-grid {
-        display: flex;
-        flex-wrap: wrap;
-        justify-content: center;
-        gap: 30px;
+    .functions-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 2rem;
         max-width: 1200px;
         margin: 0 auto;
     }
 
-    .feature-card {
+    .function-group {
+        background: #f8fafc;
+        border-radius: 16px;
+        padding: 1.5rem;
+        text-align: left;
+        transition: all 0.2s ease;
+    }
+
+        .function-group:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+
+    .group-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 1.25rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 2px solid #f97316;
+    }
+
+    .group-icon {
+        font-size: 1.75rem;
+    }
+
+    .group-header h3 {
+        font-size: 1.25rem;
+        color: #0f172a;
+    }
+
+    .function-list {
+        list-style: none;
+    }
+
+        .function-list li {
+            padding: 0.5rem 0;
+            padding-left: 1.5rem;
+            position: relative;
+            color: #334155;
+            font-size: 0.95rem;
+        }
+
+            .function-list li::before {
+                content: "▹";
+                position: absolute;
+                left: 0;
+                color: #f97316;
+            }
+
+    /* Exercise Preview */
+    .exercise-preview {
+        background: #f1f5f9;
+        padding: 80px 10%;
+        text-align: center;
+    }
+
+    .exercise-filters {
+        display: flex;
+        justify-content: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin-bottom: 2rem;
+    }
+
+    .filter-select, .search-input {
+        padding: 10px 16px;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        font-size: 0.9rem;
         background: white;
-        padding: 30px;
-        border-radius: 10px;
-        width: 100%;
-        max-width: 350px;
-        box-shadow: 0 5px 25px rgba(0, 0, 0, 0.08);
-        transition: all 0.3s ease;
+    }
+
+    .search-input {
+        min-width: 250px;
+    }
+
+    .exercise-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 1.5rem;
+        max-width: 1000px;
+        margin: 0 auto 2rem;
+    }
+
+    .exercise-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        text-align: left;
+        transition: all 0.2s ease;
+    }
+
+        .exercise-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .exercise-card h4 {
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+            color: #0f172a;
+        }
+
+    .muscle-group {
+        font-size: 0.8rem;
+        color: #f97316;
+        margin-bottom: 0.5rem;
+    }
+
+    .exercise-desc {
+        font-size: 0.85rem;
+        color: #64748b;
+    }
+
+    .text-center {
+        text-align: center;
+    }
+
+    /* Architecture Section */
+    .architecture {
+        padding: 80px 10%;
+        background: white;
+        text-align: center;
+    }
+
+        .architecture h2 {
+            font-size: 2.25rem;
+            margin-bottom: 1rem;
+        }
+
+    .arch-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 2rem;
+        max-width: 1100px;
+        margin: 0 auto;
+    }
+
+    .arch-card {
+        background: #f8fafc;
+        padding: 1.5rem;
+        border-radius: 12px;
+        position: relative;
         text-align: left;
     }
 
-        .feature-card:hover {
-            transform: translateY(-10px);
-            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.1);
-        }
-
-        .feature-card h4 {
-            font-size: 1.4rem;
-            margin-bottom: 1rem;
-            color: #333;
-        }
-
-        .feature-card p {
-            color: #666;
-            font-size: 1rem;
-        }
-
-    .testimonials {
-        padding: 80px 10%;
-        background: #f9f9f9;
-        text-align: center;
-    }
-
-    .testimonial-grid {
+    .arch-number {
+        width: 40px;
+        height: 40px;
+        background: #f97316;
+        color: white;
+        border-radius: 50%;
         display: flex;
+        align-items: center;
         justify-content: center;
-        gap: 30px;
-        flex-wrap: wrap;
-        margin-top: 3rem;
-    }
-
-    .testimonial-card {
-        background: white;
-        padding: 30px;
-        border-radius: 10px;
-        width: 100%;
-        max-width: 400px;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.05);
-    }
-
-    .quote {
-        font-style: italic;
-        font-size: 1.1rem;
-        color: #444;
+        font-weight: bold;
+        font-size: 1.25rem;
         margin-bottom: 1rem;
     }
 
-    .author {
-        font-weight: bold;
-        color: #ff5733;
+    .arch-card h3 {
+        font-size: 1.1rem;
+        margin-bottom: 0.75rem;
+        color: #0f172a;
     }
 
+    .arch-card p {
+        font-size: 0.9rem;
+        color: #64748b;
+        line-height: 1.5;
+    }
+
+    /* Database Section */
+    .database {
+        background: #f1f5f9;
+        padding: 80px 10%;
+        text-align: center;
+    }
+
+        .database h2 {
+            font-size: 2.25rem;
+            margin-bottom: 1rem;
+        }
+
+    .db-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        max-width: 1000px;
+        margin: 0 auto;
+    }
+
+    .db-table {
+        background: white;
+        padding: 1rem;
+        border-radius: 8px;
+        text-align: left;
+        border-left: 3px solid #f97316;
+    }
+
+        .db-table h4 {
+            font-size: 1rem;
+            margin-bottom: 0.25rem;
+            color: #0f172a;
+        }
+
+        .db-table p {
+            font-size: 0.8rem;
+            color: #64748b;
+        }
+
+    /* CTA Section */
     .cta-section {
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        color: white;
         text-align: center;
         padding: 80px 10%;
-        background: linear-gradient(135deg, #ff5733 0%, #e64a19 100%);
-        color: white;
     }
 
         .cta-section h3 {
@@ -265,33 +521,85 @@
         }
 
         .cta-section p {
-            max-width: 600px;
-            margin: 0 auto 2rem;
+            margin-bottom: 2rem;
             opacity: 0.9;
-            font-size: 1.1rem;
         }
 
+    .cta-buttons {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        flex-wrap: wrap;
+        margin-bottom: 2rem;
+    }
+
+    .small-note {
+        font-size: 0.8rem;
+        opacity: 0.7;
+        margin-bottom: 0;
+    }
+
+    /* Responsive */
     @media (max-width: 768px) {
-        .hero h2 {
-            font-size: 2rem;
+        .hero h1 {
+            font-size: 1.8rem;
         }
 
         .hero-subtitle {
-            font-size: 1.1rem;
+            font-size: 1rem;
         }
 
-        .feature-grid,
-        .testimonial-grid {
+        .functions h2,
+        .architecture h2,
+        .database h2,
+        .exercise-preview h2 {
+            font-size: 1.75rem;
+        }
+
+        .functions-grid,
+        .arch-grid,
+        .exercise-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .feature-highlights {
+            gap: 1rem;
+        }
+
+        .highlight-item {
+            font-size: 0.8rem;
+        }
+
+        .exercise-filters {
             flex-direction: column;
-            align-items: center;
+            align-items: stretch;
         }
 
-        .hero-stats {
-            gap: 2rem;
+        .search-input {
+            width: 100%;
         }
 
-        .stat-number {
-            font-size: 1.5rem;
+        .btn {
+            padding: 10px 20px;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .hero {
+            padding: 40px 5% 60px;
+        }
+
+        .hero-buttons {
+            flex-direction: column;
+        }
+
+        .btn {
+            width: 100%;
+            text-align: center;
+        }
+
+        .db-grid {
+            grid-template-columns: 1fr;
         }
     }
 </style>

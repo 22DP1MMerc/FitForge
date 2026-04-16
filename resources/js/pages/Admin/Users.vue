@@ -55,7 +55,7 @@ const props = defineProps<Props>();
 const searchQuery = ref('');
 const processingUserId = ref<number | null>(null);
 
-// Search functionality
+// Meklēšanas funkcionalitāte
 const searchUsers = () => {
     router.get(route('admin.users'), { search: searchQuery.value }, {
         preserveState: true,
@@ -63,7 +63,7 @@ const searchUsers = () => {
     });
 };
 
-// Debounce search
+// Meklēšanas aizkave
 let searchTimeout: NodeJS.Timeout;
 const onSearchInput = () => {
     clearTimeout(searchTimeout);
@@ -72,10 +72,10 @@ const onSearchInput = () => {
     }, 300);
 };
 
-// Toggle admin status
+// Administratora statusa pārslēgšana
 const toggleAdmin = (user: User) => {
-    const action = user.is_admin ? 'remove admin privileges from' : 'make';
-    if (confirm(`Are you sure you want to ${action} ${user.name}?`)) {
+    const action = user.is_admin ? 'noņemt administratora tiesības' : 'piešķirt administratora tiesības';
+    if (confirm(`Vai tiešām vēlaties ${action} lietotājam ${user.name}?`)) {
         processingUserId.value = user.id;
         router.post(route('admin.users.toggle-admin', user.id), {}, {
             preserveScroll: true,
@@ -86,9 +86,9 @@ const toggleAdmin = (user: User) => {
     }
 };
 
-// Delete user
+// Lietotāja dzēšana
 const deleteUser = (user: User) => {
-    if (confirm(`Are you sure you want to delete ${user.name}? This will permanently delete all their data. This action cannot be undone.`)) {
+    if (confirm(`Vai tiešām vēlaties dzēst lietotāju ${user.name}? Tas neatgriezeniski dzēsīs visus viņa datus. Šo darbību nevar atsaukt.`)) {
         processingUserId.value = user.id;
         router.delete(route('admin.users.delete', user.id), {
             preserveScroll: true,
@@ -99,25 +99,25 @@ const deleteUser = (user: User) => {
     }
 };
 
-// Format date without external libraries
+// Datuma formatēšana bez ārējām bibliotēkām
 const formatDate = (date: string | null) => {
-    if (!date) return 'Not verified';
+    if (!date) return 'Nav apstiprināts';
     const d = new Date(date);
-    return d.toLocaleDateString('en-US', {
+    return d.toLocaleDateString('lv-LV', {
         year: 'numeric',
         month: 'long',
         day: 'numeric'
     });
 };
 
-// Get role badge style
+// Lomas nozīmītes stils
 const getRoleBadgeClass = (isAdmin: boolean) => {
     return isAdmin
         ? 'bg-purple-100 text-purple-800 border-purple-200'
         : 'bg-gray-100 text-gray-700 border-gray-200';
 };
 
-// Get verification badge style
+// Verifikācijas nozīmītes stils
 const getVerificationBadgeClass = (isVerified: boolean) => {
     return isVerified
         ? 'bg-green-100 text-green-800 border-green-200'
@@ -127,29 +127,29 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
 
 <template>
     <AppLayout>
-        <Head title="Admin - User Management" />
+        <Head title="Administrators - Lietotāju pārvaldība" />
 
         <div class="admin-page-container">
             <div class="container-wrapper">
-                <!-- Header -->
+                <!-- Galvene -->
                 <div class="header-section">
                     <div class="header-content">
                         <div>
                             <h1 class="main-title">
-                                User Management
+                                Lietotāju pārvaldība
                             </h1>
                             <p class="description-text">
-                                Manage all registered users and their roles
+                                Pārvaldiet visus reģistrētos lietotājus un viņu lomas
                             </p>
                         </div>
                         <div class="stats-badge">
                             <Users class="stats-icon" />
-                            <span>{{ stats.total_users }} Total Users</span>
+                            <span>{{ stats.total_users }} Kopā lietotāju</span>
                         </div>
                     </div>
                 </div>
 
-                <!-- Statistics Cards -->
+                <!-- Statistikas kartītes -->
                 <div class="stats-grid">
                     <Card class="stat-card">
                         <CardContent class="stat-card-content">
@@ -158,7 +158,7 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
                             </div>
                             <div class="stat-info">
                                 <p class="stat-value">{{ stats.total_users }}</p>
-                                <p class="stat-label">Total Users</p>
+                                <p class="stat-label">Kopā lietotāju</p>
                             </div>
                         </CardContent>
                     </Card>
@@ -170,7 +170,7 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
                             </div>
                             <div class="stat-info">
                                 <p class="stat-value">{{ stats.total_admins }}</p>
-                                <p class="stat-label">Administrators</p>
+                                <p class="stat-label">Administratori</p>
                             </div>
                         </CardContent>
                     </Card>
@@ -182,13 +182,13 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
                             </div>
                             <div class="stat-info">
                                 <p class="stat-value">{{ stats.active_users_7d }}</p>
-                                <p class="stat-label">New Users (7 days)</p>
+                                <p class="stat-label">Jauni lietotāji (7 dienās)</p>
                             </div>
                         </CardContent>
                     </Card>
                 </div>
 
-                <!-- Users Management Card -->
+                <!-- Lietotāju pārvaldības kartīte -->
                 <Card class="users-card">
                     <CardHeader class="card-header">
                         <div class="header-icon-wrapper">
@@ -197,41 +197,41 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
                             </div>
                             <div>
                                 <CardTitle class="card-title">
-                                    All Users
+                                    Visi lietotāji
                                 </CardTitle>
                                 <CardDescription class="card-description">
-                                    View and manage all registered users
+                                    Skatīt un pārvaldīt visus reģistrētos lietotājus
                                 </CardDescription>
                             </div>
                         </div>
 
-                        <!-- Search Bar -->
+                        <!-- Meklēšanas josla -->
                         <div class="search-wrapper">
                             <div class="search-input-container">
                                 <Search class="search-icon" />
                                 <Input v-model="searchQuery"
                                        @input="onSearchInput"
-                                       placeholder="Search by name or email..."
+                                       placeholder="Meklēt pēc vārda vai e-pasta..."
                                        class="search-input" />
                             </div>
                         </div>
                     </CardHeader>
 
                     <CardContent class="card-content">
-                        <!-- Users Table -->
+                        <!-- Lietotāju tabula -->
                         <div class="users-table-container">
                             <table class="users-table">
                                 <thead>
                                     <tr>
-                                        <th class="table-header">User</th>
-                                        <th class="table-header">Email</th>
-                                        <th class="table-header">Role</th>
-                                        <th class="table-header">Verification</th>
-                                        <th class="table-header">Routines</th>
-                                        <th class="table-header">Goals</th>
-                                        <th class="table-header">Workouts</th>
-                                        <th class="table-header">Joined</th>
-                                        <th class="table-header actions-header">Actions</th>
+                                        <th class="table-header">Lietotājs</th>
+                                        <th class="table-header">E-pasts</th>
+                                        <th class="table-header">Loma</th>
+                                        <th class="table-header">Verifikācija</th>
+                                        <th class="table-header">Rutīnas</th>
+                                        <th class="table-header">Mērķi</th>
+                                        <th class="table-header">Treniņi</th>
+                                        <th class="table-header">Pievienojās</th>
+                                        <th class="table-header actions-header">Darbības</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -256,14 +256,14 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
                                             <span :class="['role-badge', getRoleBadgeClass(user.is_admin)]">
                                                 <Shield v-if="user.is_admin" class="badge-icon" />
                                                 <User v-else class="badge-icon" />
-                                                {{ user.is_admin ? 'Admin' : 'User' }}
+                                                {{ user.is_admin ? 'Administrators' : 'Lietotājs' }}
                                             </span>
                                         </td>
                                         <td class="verification-cell">
                                             <span :class="['verification-badge', getVerificationBadgeClass(!!user.email_verified_at)]">
                                                 <CheckCircle v-if="user.email_verified_at" class="badge-icon" />
                                                 <ShieldAlert v-else class="badge-icon" />
-                                                {{ user.email_verified_at ? 'Verified' : 'Pending' }}
+                                                {{ user.email_verified_at ? 'Apstiprināts' : 'Gaida apstiprinājumu' }}
                                             </span>
                                         </td>
                                         <td class="stats-cell">
@@ -288,7 +288,7 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
                                                         :class="['action-btn', user.is_admin ? 'demote-btn' : 'promote-btn']">
                                                     <Shield v-if="!user.is_admin" class="action-icon" />
                                                     <ShieldAlert v-else class="action-icon" />
-                                                    {{ user.is_admin ? 'Demote' : 'Promote' }}
+                                                    {{ user.is_admin ? 'Atņemt tiesības' : 'Piešķirt tiesības' }}
                                                 </Button>
                                                 <Button @click="deleteUser(user)"
                                                         :disabled="processingUserId === user.id"
@@ -296,7 +296,7 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
                                                         size="sm"
                                                         class="action-btn delete-btn">
                                                     <Trash2 class="action-icon" />
-                                                    Delete
+                                                    Dzēst
                                                 </Button>
                                             </div>
                                         </td>
@@ -305,10 +305,10 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
                             </table>
                         </div>
 
-                        <!-- Pagination -->
+                        <!-- Lapošana -->
                         <div v-if="users.last_page > 1" class="pagination-wrapper">
                             <div class="pagination-info">
-                                Showing {{ users.data.length }} of {{ users.total }} users
+                                Rāda {{ users.data.length }} no {{ users.total }} lietotājiem
                             </div>
                             <div class="pagination-buttons">
                                 <Link v-for="link in users.links"
@@ -383,7 +383,7 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
         color: #f97316;
     }
 
-    /* Stats Grid */
+    /* Statistikas režģis */
     .stats-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -453,7 +453,7 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
         margin-top: 0.25rem;
     }
 
-    /* Users Card */
+    /* Lietotāju kartīte */
     .users-card {
         border: 2px solid #e2e8f0;
         border-radius: 1rem;
@@ -505,7 +505,7 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
         margin-top: 0.25rem;
     }
 
-    /* Search */
+    /* Meklēšana */
     .search-wrapper {
         display: flex;
         gap: 0.75rem;
@@ -531,7 +531,7 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
         width: 250px;
     }
 
-    /* Table */
+    /* Tabula */
     .users-table-container {
         overflow-x: auto;
     }
@@ -712,7 +712,7 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
         width: 0.875rem;
     }
 
-    /* Pagination */
+    /* Lapošana */
     .pagination-wrapper {
         padding: 1.5rem;
         border-top: 1px solid #e2e8f0;
@@ -761,7 +761,7 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
             cursor: not-allowed;
         }
 
-    /* Responsive */
+    /* Responsīvais dizains */
     @media (max-width: 1024px) {
         .stats-grid {
             grid-template-columns: repeat(2, 1fr);

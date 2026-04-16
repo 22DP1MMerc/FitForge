@@ -1,786 +1,750 @@
+<script setup lang="ts">
+import { ref } from 'vue';
+import { Link, router } from '@inertiajs/vue3';
+import AppLayout from '@/Layouts/AppLayout.vue';
+
+const props = defineProps({
+    workoutLog:      Object,
+    stats:           Object,
+    similarWorkouts: Array
+});
+
+const showDeleteModal = ref(false);
+
+const formatDate = (d: string) => new Date(d).toLocaleDateString('lv-LV', {
+    year: 'numeric', month: 'long', day: 'numeric'
+});
+
+const formatTime = (d: string) => new Date(d).toLocaleTimeString('lv-LV', {
+    hour: '2-digit', minute: '2-digit'
+});
+
+const getSetsData = (logExercise: any) => {
+    const reps    = logExercise.reps_completed || [];
+    const weights = logExercise.weights_used   || [];
+    return Array.from({ length: logExercise.sets_completed }, (_, i) => ({
+        reps:   reps[i] || 0,
+        weight: Array.isArray(weights[i]) ? (weights[i]?.weight || 0) : (weights[i] || 0)
+    }));
+};
+
+const muscleGroupPercent = (count: number) => {
+    const total = Object.values(props.stats.muscle_groups).reduce((s: number, v: any) => s + v, 0);
+    return total > 0 ? Math.round((count / total) * 100) : 0;
+};
+
+const deleteWorkout = () => {
+    router.delete(route('workout-logs.destroy', props.workoutLog.id));
+    showDeleteModal.value = false;
+};
+</script>
+
 <template>
     <AppLayout>
-        <div class="workout-detail">
-            <!-- Back button -->
-            <div class="back-nav">
-                <Link :href="route('workout-logs.index')" class="back-link">
-                ← Atpakaļ uz sarakstu
-                </Link>
+        <div class="page">
+
+            <!-- Galvene -->
+            <div class="topbar">
+                <div class="topbar-left">
+                    <Link :href="route('workout-logs.index')" class="back-link">
+                    ← Atpakaļ
+                    </Link>
+                    <div>
+                        <h1 class="topbar-title">{{ workoutLog.name }}</h1>
+                        <div class="topbar-meta">
+                            <span>📅 {{ formatDate(workoutLog.completed_at) }}</span>
+                            <span>⏱️ {{ workoutLog.duration_minutes }} min</span>
+                            <span v-if="workoutLog.routine" class="routine-tag">{{ workoutLog.routine.name }}</span>
+                        </div>
+                    </div>
+                </div>
+                <button @click="showDeleteModal = true" class="btn-delete">🗑️ Dzēst</button>
             </div>
 
-            <!-- Header -->
-            <div class="detail-header">
-                <h1 class="workout-title">{{ workoutLog.name }}</h1>
-                <div class="workout-meta">
-                    <span class="meta-item">📅 {{ formatDate(workoutLog.completed_at) }}</span>
-                    <span class="meta-item">⏱️ {{ workoutLog.duration_minutes }} min</span>
-                    <span v-if="workoutLog.calories_burned" class="meta-item">
-                        🔥 {{ workoutLog.calories_burned }} cal
-                    </span>
-                    <span v-if="workoutLog.routine" class="routine-tag">
-                        {{ workoutLog.routine.name }}
-                    </span>
-                </div>
-                <div class="header-actions">
-                    <button @click="exportWorkout" class="btn-export">📥 Eksportēt</button>
-                    <button @click="confirmDelete" class="btn-delete">🗑️ Dzēst</button>
-                </div>
-            </div>
-
-            <!-- Treniņa statistika -->
+            <!-- Ātrie statistikas lodziņi -->
             <div class="quick-stats">
-                <div class="stat-box">
-                    <div class="stat-value">{{ stats.total_sets }}</div>
-                    <div class="stat-label">Kopējie seti</div>
+                <div class="qstat">
+                    <div class="qstat-val">{{ stats.total_sets }}</div>
+                    <div class="qstat-lbl">Kopējie seti</div>
                 </div>
-                <div class="stat-box">
-                    <div class="stat-value">{{ stats.total_reps }}</div>
-                    <div class="stat-label">Kopējie atkārtojumi</div>
+                <div class="qstat">
+                    <div class="qstat-val">{{ stats.total_reps }}</div>
+                    <div class="qstat-lbl">Kopējie atkārtojumi</div>
                 </div>
-                <div class="stat-box">
-                    <div class="stat-value">{{ stats.total_weight }} kg</div>
-                    <div class="stat-label">Kopējais svars</div>
+                <div class="qstat">
+                    <div class="qstat-val">{{ stats.total_weight }} kg</div>
+                    <div class="qstat-lbl">Kopējais svars</div>
                 </div>
-                <div class="stat-box">
-                    <div class="stat-value">{{ stats.average_weight_per_set }} kg</div>
-                    <div class="stat-label">Vidējais svars/setam</div>
+                <div class="qstat">
+                    <div class="qstat-val">{{ stats.average_weight_per_set }} kg</div>
+                    <div class="qstat-lbl">Vid. svars/setam</div>
                 </div>
             </div>
 
-            <div class="detail-content">
+            <!-- Saturs -->
+            <div class="content">
+
                 <!-- Vingrinājumi -->
-                <div class="exercises-section">
-                    <h2 class="section-title">
-                        Vingrinājumi
-                        <span class="count-badge">{{ workoutLog.log_exercises?.length || 0 }}</span>
-                    </h2>
+                <div class="exercises-col">
+                    <div class="section-card">
+                        <div class="section-header">
+                            <h2 class="section-title">Vingrinājumi</h2>
+                            <span class="count-badge">{{ workoutLog.log_exercises?.length || 0 }}</span>
+                        </div>
 
-                    <div class="exercises-list">
-                        <div v-for="(logExercise, index) in workoutLog.log_exercises" :key="logExercise.id" class="exercise-card">
-                            <div class="exercise-header">
-                                <div>
-                                    <h3 class="exercise-name">{{ logExercise.exercise?.name }}</h3>
-                                    <div class="exercise-info">
-                                        <span v-if="logExercise.exercise?.muscle_group" class="muscle-group">
-                                            💪 {{ logExercise.exercise.muscle_group }}
-                                        </span>
-                                        <span class="planned">
-                                            Plānots: {{ logExercise.sets_planned }}x{{ logExercise.reps_planned }}
-                                        </span>
-                                    </div>
-                                </div>
-                                <div class="completed-info">
-                                    <div class="completed-count">{{ logExercise.sets_completed }} seti</div>
-                                    <div class="label">pabeigti</div>
-                                </div>
-                            </div>
-
-                            <!-- Setu rezultāti -->
-                            <div class="sets-section">
-                                <h4 class="sets-title">Setu rezultāti:</h4>
-                                <div class="sets-grid">
-                                    <div v-for="(set, setIndex) in getSetsData(logExercise)" :key="setIndex" class="set-box">
-                                        <div class="set-number">Set {{ setIndex + 1 }}</div>
-                                        <div class="set-data">
-                                            <span class="reps">{{ set.reps }}x</span>
-                                            <span class="weight">{{ set.weight }} kg</span>
+                        <div class="exercise-list">
+                            <div v-for="ex in workoutLog.log_exercises" :key="ex.id" class="exercise-card">
+                                <div class="ex-header">
+                                    <div>
+                                        <div class="ex-name">{{ ex.exercise?.name }}</div>
+                                        <div class="ex-meta">
+                                            <span v-if="ex.exercise?.muscle_group" class="muscle-badge">
+                                                {{ ex.exercise.muscle_group }}
+                                            </span>
+                                            <span class="ex-planned">Plānots: {{ ex.sets_planned }}×{{ ex.reps_planned }}</span>
                                         </div>
                                     </div>
-                                </div>
-                            </div>
-
-                            <!-- Piezīmes -->
-                            <div v-if="logExercise.notes" class="exercise-notes">
-                                <div class="notes-label">📝 Piezīmes:</div>
-                                <p class="notes-content">{{ logExercise.notes }}</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Sidebar -->
-                <div class="sidebar">
-                    <!-- Muskuļu grupu statistika -->
-                    <div class="sidebar-card">
-                        <h3 class="sidebar-title">Muskuļu grupas</h3>
-                        <div class="muscle-groups">
-                            <div v-for="(count, muscleGroup) in stats.muscle_groups" :key="muscleGroup" class="muscle-item">
-                                <div class="muscle-name">{{ muscleGroup }}</div>
-                                <div class="muscle-progress">
-                                    <div class="progress-bar">
-                                        <div class="progress-fill"
-                                             :style="{ width: calculateMuscleGroupPercentage(count) + '%' }"></div>
+                                    <div class="ex-done">
+                                        <div class="ex-done-num">{{ ex.sets_completed }}</div>
+                                        <div class="ex-done-lbl">seti</div>
                                     </div>
                                 </div>
-                                <div class="muscle-count">{{ count }} seti</div>
-                            </div>
-                        </div>
-                    </div>
 
-                    <!-- Līdzīgie treniņi -->
-                    <div v-if="similarWorkouts.length > 0" class="sidebar-card">
-                        <h3 class="sidebar-title">Līdzīgi treniņi</h3>
-                        <div class="similar-workouts">
-                            <div v-for="similar in similarWorkouts" :key="similar.id" class="similar-workout">
-                                <div class="similar-info">
-                                    <div class="similar-name">{{ similar.name }}</div>
-                                    <div class="similar-date">{{ formatDate(similar.completed_at) }}</div>
+                                <!-- Setu rezultāti -->
+                                <div class="sets-grid">
+                                    <div v-for="(set, i) in getSetsData(ex)" :key="i" class="set-box">
+                                        <div class="set-num">Set {{ i + 1 }}</div>
+                                        <div class="set-reps">{{ set.reps }}×</div>
+                                        <div class="set-weight">{{ set.weight }} kg</div>
+                                    </div>
                                 </div>
-                                <Link :href="route('workout-logs.show', similar.id)" class="view-link">
-                                Skatīt →
-                                </Link>
-                            </div>
-                        </div>
-                    </div>
 
-                    <!-- Papildus informācija -->
-                    <div class="sidebar-card">
-                        <h3 class="sidebar-title">Papildus informācija</h3>
-                        <div class="additional-info">
-                            <div class="info-row">
-                                <span class="info-label">Vidējie atkārtojumi setā:</span>
-                                <span class="info-value">{{ stats.average_reps_per_set }}</span>
-                            </div>
-                            <div class="info-row">
-                                <span class="info-label">Kopējais treniņa svars:</span>
-                                <span class="info-value">{{ stats.total_weight }} kg</span>
-                            </div>
-                            <div class="info-row">
-                                <span class="info-label">Vidējais svars setā:</span>
-                                <span class="info-value">{{ stats.average_weight_per_set }} kg</span>
-                            </div>
-                            <div v-if="workoutLog.calories_burned" class="info-row">
-                                <span class="info-label">Pazudušās kalorijas:</span>
-                                <span class="info-value">{{ workoutLog.calories_burned }}</span>
+                                <div v-if="ex.notes" class="ex-notes">
+                                    <span class="notes-label">Piezīmes:</span> {{ ex.notes }}
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- Dzēšanas dialogs -->
-            <div v-if="showDeleteModal" class="modal">
-                <div class="modal-content">
-                    <h3>Dzēst treniņu?</h3>
-                    <p>Vai tiešām vēlaties dzēst šo treniņu? Šī darbība nevar tikt atcelta.</p>
-                    <div class="modal-buttons">
+                <!-- Sānjosla -->
+                <div class="sidebar">
+
+                    <!-- Muskuļu grupas -->
+                    <div class="sidebar-card">
+                        <h3 class="sidebar-title">Muskuļu grupas</h3>
+                        <div class="muscle-list">
+                            <div v-for="(count, mg) in stats.muscle_groups" :key="mg" class="muscle-row">
+                                <div class="muscle-name">{{ mg }}</div>
+                                <div class="muscle-bar-wrap">
+                                    <div class="muscle-bar">
+                                        <div class="muscle-fill" :style="{ width: muscleGroupPercent(count) + '%' }"></div>
+                                    </div>
+                                </div>
+                                <div class="muscle-count">{{ count }}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Papildu info -->
+                    <div class="sidebar-card">
+                        <h3 class="sidebar-title">Papildu informācija</h3>
+                        <div class="info-list">
+                            <div class="info-row">
+                                <span class="info-lbl">Vid. atkārtojumi/setā</span>
+                                <span class="info-val">{{ stats.average_reps_per_set }}</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-lbl">Kopējais svars</span>
+                                <span class="info-val">{{ stats.total_weight }} kg</span>
+                            </div>
+                            <div class="info-row">
+                                <span class="info-lbl">Vid. svars/setā</span>
+                                <span class="info-val">{{ stats.average_weight_per_set }} kg</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Līdzīgi treniņi -->
+                    <div v-if="similarWorkouts.length > 0" class="sidebar-card">
+                        <h3 class="sidebar-title">Līdzīgi treniņi</h3>
+                        <div class="similar-list">
+                            <div v-for="s in similarWorkouts" :key="s.id" class="similar-row">
+                                <div>
+                                    <div class="similar-name">{{ s.name }}</div>
+                                    <div class="similar-date">{{ formatDate(s.completed_at) }}</div>
+                                </div>
+                                <Link :href="route('workout-logs.show', s.id)" class="similar-link">Skatīt →</Link>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Dzēšanas modāls -->
+        <Teleport to="body">
+            <div v-if="showDeleteModal" class="modal-overlay" @click.self="showDeleteModal = false">
+                <div class="modal">
+                    <div class="modal-header">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="20" height="20">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.928-.833-2.698 0L4.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                        </svg>
+                        <h3>Dzēst treniņu?</h3>
+                    </div>
+                    <div class="modal-body">
+                        <p>Vai tiešām vēlaties dzēst šo treniņu?</p>
+                        <p class="modal-warn">Šī darbība nevar tikt atcelta.</p>
+                    </div>
+                    <div class="modal-footer">
                         <button @click="showDeleteModal = false" class="btn-cancel">Atcelt</button>
                         <button @click="deleteWorkout" class="btn-confirm">Dzēst</button>
                     </div>
                 </div>
             </div>
-        </div>
+        </Teleport>
     </AppLayout>
 </template>
 
-<script setup lang="ts">
-    import { ref } from 'vue';
-    import { Link, router } from '@inertiajs/vue3';
-    import AppLayout from '@/Layouts/AppLayout.vue';
-
-    // Props
-    const props = defineProps({
-        workoutLog: Object,
-        stats: Object,
-        similarWorkouts: Array
-    });
-
-    // Reactive state
-    const showDeleteModal = ref(false);
-
-    // Formatēšanas funkcijas
-    const formatDate = (dateString: string) => {
-        return new Date(dateString).toLocaleDateString('lv-LV', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-        });
-    };
-
-    // Iegūst setu datus
-    const getSetsData = (logExercise: any) => {
-        const sets = [];
-        const reps = logExercise.reps_completed || [];
-        const weights = logExercise.weights_used || [];
-
-        for (let i = 0; i < logExercise.sets_completed; i++) {
-            const rep = reps[i] || 0;
-            let weight = 0;
-
-            if (Array.isArray(weights[i])) {
-                weight = weights[i]?.weight || 0;
-            } else {
-                weight = weights[i] || 0;
-            }
-
-            sets.push({
-                reps: rep,
-                weight: weight
-            });
-        }
-
-        return sets;
-    };
-
-    // Aprēķina muskuļu grupas procentus
-    const calculateMuscleGroupPercentage = (count: number) => {
-        const total = Object.values(props.stats.muscle_groups).reduce((sum: number, val: any) => sum + val, 0);
-        return total > 0 ? Math.round((count / total) * 100) : 0;
-    };
-
-    // Eksportēšana
-    const exportWorkout = async () => {
-        try {
-            const response = await fetch(route('workout-logs.export', props.workoutLog.id));
-            const data = await response.json();
-
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `trenins-${props.workoutLog.id}-${new Date(props.workoutLog.completed_at).toISOString().split('T')[0]}.json`;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-
-        } catch (error) {
-            console.error('Export error:', error);
-            alert('Kļūda eksportējot treniņu');
-        }
-    };
-
-    // Dzēšana
-    const confirmDelete = () => {
-        showDeleteModal.value = true;
-    };
-
-    const deleteWorkout = async () => {
-        try {
-            await router.delete(route('workout-logs.destroy', props.workoutLog.id));
-        } catch (error) {
-            console.error('Delete error:', error);
-            alert('Kļūda dzēšot treniņu');
-        }
-    };
-</script>
-
 <style scoped>
-    .workout-detail {
-        max-width: 1400px;
+    .page {
+        max-width: 1200px;
         margin: 0 auto;
-        padding: 20px;
+        padding: 0 1rem 2rem;
+        min-height: 100vh;
+        background: #f3f4f6;
     }
 
-    /* Back navigation */
-    .back-nav {
-        margin-bottom: 20px;
+    /* Galvene */
+    .topbar {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 1.25rem 1.5rem;
+        margin: 0 -1rem 1.5rem;
+        background: linear-gradient(135deg, #ff8c42 0%, #e65c00 100%);
+        box-shadow: 0 2px 12px rgba(230, 92, 0, 0.3);
+    }
+
+    .topbar-left {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
     }
 
     .back-link {
-        display: inline-block;
-        color: #666;
+        font-size: 0.8rem;
+        color: rgba(255,255,255,0.8);
         text-decoration: none;
-        font-size: 14px;
-        padding: 8px 0;
-        transition: color 0.2s;
+        transition: color 0.15s;
     }
 
         .back-link:hover {
-            color: #ff6b00;
+            color: white;
         }
 
-    /* Header */
-    .detail-header {
-        margin-bottom: 30px;
-    }
-
-    .workout-title {
-        font-size: 28px;
+    .topbar-title {
+        font-size: 1.375rem;
         font-weight: 700;
-        color: #333;
-        margin-bottom: 15px;
+        color: white;
+        margin-bottom: 0.35rem;
     }
 
-    .workout-meta {
+    .topbar-meta {
         display: flex;
         flex-wrap: wrap;
-        gap: 15px;
-        align-items: center;
-        margin-bottom: 20px;
-    }
-
-    .meta-item {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        color: #666;
-        font-size: 14px;
+        gap: 0.75rem;
+        font-size: 0.8rem;
+        color: rgba(255,255,255,0.85);
     }
 
     .routine-tag {
-        background: #e6f7ff;
-        color: #007acc;
-        padding: 6px 12px;
-        border-radius: 20px;
-        font-size: 13px;
+        background: rgba(0,0,0,0.2);
+        padding: 0.15rem 0.5rem;
+        border-radius: 9999px;
         font-weight: 500;
     }
-
-    .header-actions {
-        display: flex;
-        gap: 10px;
-    }
-
-    .btn-export, .btn-delete {
-        padding: 10px 20px;
-        border-radius: 8px;
-        font-size: 14px;
-        font-weight: 500;
-        cursor: pointer;
-        border: none;
-        transition: all 0.2s;
-    }
-
-    .btn-export {
-        background: #007acc;
-        color: white;
-    }
-
-        .btn-export:hover {
-            background: #0066b3;
-        }
 
     .btn-delete {
-        background: #dc3545;
+        padding: 0.45rem 1rem;
+        background: rgba(0,0,0,0.2);
+        border: 1px solid rgba(255,255,255,0.3);
+        border-radius: 0.5rem;
         color: white;
+        font-size: 0.8rem;
+        font-weight: 500;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: background 0.15s;
+        flex-shrink: 0;
     }
 
         .btn-delete:hover {
-            background: #c82333;
+            background: rgba(239,68,68,0.6);
+            border-color: rgba(239,68,68,0.5);
         }
 
-    /* Quick stats */
+    /* Ātrie statistikas lodziņi */
     .quick-stats {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 15px;
-        margin-bottom: 30px;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1rem;
+        margin-bottom: 1.25rem;
     }
 
-    .stat-box {
+    .qstat {
         background: white;
-        border-radius: 12px;
-        padding: 20px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        border: 1px solid #eaeaea;
+        border-radius: 0.875rem;
+        padding: 1.1rem 1rem;
+        border: 1px solid #e5e7eb;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
         text-align: center;
     }
 
-    .stat-value {
-        font-size: 32px;
+    .qstat-val {
+        font-size: 1.625rem;
         font-weight: 700;
-        color: #ff6b00;
-        margin-bottom: 5px;
+        color: #ff8c42;
+        margin-bottom: 0.25rem;
+        line-height: 1;
     }
 
-    .stat-label {
-        color: #666;
-        font-size: 14px;
-    }
-
-    /* Main content */
-    .detail-content {
-        display: grid;
-        grid-template-columns: 2fr 1fr;
-        gap: 30px;
-    }
-
-    @media (max-width: 1024px) {
-        .detail-content {
-            grid-template-columns: 1fr;
-        }
-    }
-
-    /* Exercises section */
-    .exercises-section {
-        background: white;
-        border-radius: 12px;
-        padding: 25px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
-
-    .section-title {
-        font-size: 20px;
-        font-weight: 600;
-        color: #333;
-        margin-bottom: 20px;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-    }
-
-    .count-badge {
-        background: #ff6b00;
-        color: white;
-        padding: 2px 10px;
-        border-radius: 20px;
-        font-size: 14px;
+    .qstat-lbl {
+        font-size: 0.75rem;
+        color: #6b7280;
         font-weight: 500;
     }
 
-    .exercises-list {
+    /* Saturs */
+    .content {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 1.25rem;
+        align-items: start;
+    }
+
+    /* Vingrinājumi */
+    .exercises-col {
+    }
+
+    .section-card {
+        background: white;
+        border-radius: 1rem;
+        border: 1px solid #e5e7eb;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        overflow: hidden;
+    }
+
+    .section-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid #f3f4f6;
+    }
+
+    .section-title {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #111827;
+    }
+
+    .count-badge {
+        background: #ff8c42;
+        color: white;
+        font-size: 0.72rem;
+        font-weight: 700;
+        padding: 0.15rem 0.5rem;
+        border-radius: 9999px;
+    }
+
+    .exercise-list {
         display: flex;
         flex-direction: column;
-        gap: 20px;
     }
 
     .exercise-card {
-        border: 1px solid #eaeaea;
-        border-radius: 10px;
-        padding: 20px;
+        padding: 1rem 1.25rem;
+        border-bottom: 1px solid #f3f4f6;
     }
 
-    .exercise-header {
+        .exercise-card:last-child {
+            border-bottom: none;
+        }
+
+    .ex-header {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
-        margin-bottom: 15px;
+        margin-bottom: 0.875rem;
     }
 
-    .exercise-name {
-        font-size: 18px;
-        font-weight: 600;
-        color: #333;
-        margin-bottom: 8px;
-    }
-
-    .exercise-info {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
-        align-items: center;
-    }
-
-    .muscle-group {
-        font-size: 13px;
-        color: #007acc;
-        background: #e6f7ff;
-        padding: 4px 10px;
-        border-radius: 20px;
-    }
-
-    .planned {
-        font-size: 13px;
-        color: #666;
-    }
-
-    .completed-info {
-        text-align: right;
-    }
-
-    .completed-count {
-        font-size: 20px;
+    .ex-name {
+        font-size: 0.95rem;
         font-weight: 700;
-        color: #007acc;
-        margin-bottom: 4px;
+        color: #111827;
+        margin-bottom: 0.35rem;
     }
 
-    .completed-info .label {
-        font-size: 12px;
-        color: #888;
+    .ex-meta {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
     }
 
-    /* Sets section */
-    .sets-section {
-        margin-top: 20px;
-    }
-
-    .sets-title {
-        font-size: 14px;
+    .muscle-badge {
+        font-size: 0.7rem;
         font-weight: 600;
-        color: #555;
-        margin-bottom: 12px;
+        color: #e65c00;
+        background: #fff7ed;
+        padding: 0.1rem 0.45rem;
+        border-radius: 9999px;
+        border: 1px solid #fed7aa;
     }
 
+    .ex-planned {
+        font-size: 0.75rem;
+        color: #9ca3af;
+    }
+
+    .ex-done {
+        text-align: right;
+        flex-shrink: 0;
+    }
+
+    .ex-done-num {
+        font-size: 1.375rem;
+        font-weight: 700;
+        color: #ff8c42;
+        line-height: 1;
+    }
+
+    .ex-done-lbl {
+        font-size: 0.7rem;
+        color: #9ca3af;
+    }
+
+    /* Setu grid */
     .sets-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-        gap: 12px;
+        grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+        gap: 0.5rem;
     }
 
     .set-box {
-        background: #f8f9fa;
-        border: 1px solid #eaeaea;
-        border-radius: 8px;
-        padding: 12px;
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        padding: 0.5rem;
         text-align: center;
     }
 
-    .set-number {
-        font-size: 11px;
-        color: #888;
-        margin-bottom: 6px;
+    .set-num {
+        font-size: 0.65rem;
+        color: #9ca3af;
+        margin-bottom: 0.25rem;
     }
 
-    .set-data {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
+    .set-reps {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #111827;
+        line-height: 1;
     }
 
-        .set-data .reps {
-            font-size: 18px;
-            font-weight: 700;
-            color: #333;
-        }
-
-        .set-data .weight {
-            font-size: 14px;
-            color: #666;
-        }
-
-    /* Exercise notes */
-    .exercise-notes {
-        margin-top: 15px;
-        padding: 12px;
-        background: #fff9e6;
-        border-radius: 8px;
-        border: 1px solid #ffe58f;
+    .set-weight {
+        font-size: 0.75rem;
+        color: #6b7280;
+        margin-top: 0.15rem;
     }
 
-    .notes-label {
-        font-size: 13px;
-        font-weight: 600;
-        color: #d48806;
-        margin-bottom: 6px;
-    }
-
-    .notes-content {
-        font-size: 14px;
-        color: #666;
+    .ex-notes {
+        margin-top: 0.75rem;
+        padding: 0.6rem 0.75rem;
+        background: #fffbeb;
+        border-radius: 0.5rem;
+        border: 1px solid #fde68a;
+        font-size: 0.8rem;
+        color: #6b7280;
         line-height: 1.5;
     }
 
-    /* Sidebar */
+    .notes-label {
+        font-weight: 600;
+        color: #d97706;
+        margin-right: 0.25rem;
+    }
+
+    /* Sānjosla */
     .sidebar {
         display: flex;
         flex-direction: column;
-        gap: 20px;
+        gap: 1rem;
     }
 
     .sidebar-card {
         background: white;
-        border-radius: 12px;
-        padding: 20px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        border: 1px solid #eaeaea;
+        border-radius: 1rem;
+        padding: 1rem 1.25rem;
+        border: 1px solid #e5e7eb;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
     }
 
     .sidebar-title {
-        font-size: 16px;
-        font-weight: 600;
-        color: #333;
-        margin-bottom: 15px;
-        padding-bottom: 10px;
-        border-bottom: 2px solid #f0f0f0;
+        font-size: 0.875rem;
+        font-weight: 700;
+        color: #111827;
+        margin-bottom: 0.875rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid #f3f4f6;
     }
 
-    /* Muscle groups */
-    .muscle-groups {
+    /* Muskuļu grupas */
+    .muscle-list {
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 0.625rem;
     }
 
-    .muscle-item {
+    .muscle-row {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 0.5rem;
     }
 
     .muscle-name {
-        font-size: 13px;
-        color: #333;
-        width: 100px;
+        font-size: 0.775rem;
+        color: #374151;
+        width: 90px;
         flex-shrink: 0;
     }
 
-    .muscle-progress {
+    .muscle-bar-wrap {
         flex: 1;
     }
 
-    .progress-bar {
-        height: 6px;
-        background: #eaeaea;
-        border-radius: 3px;
+    .muscle-bar {
+        height: 5px;
+        background: #e5e7eb;
+        border-radius: 9999px;
         overflow: hidden;
     }
 
-    .progress-fill {
+    .muscle-fill {
         height: 100%;
-        background: linear-gradient(90deg, #007acc, #005fa3);
-        border-radius: 3px;
+        background: linear-gradient(90deg, #ff8c42, #e65c00);
+        border-radius: 9999px;
     }
 
     .muscle-count {
-        font-size: 13px;
-        font-weight: 500;
-        color: #333;
-        width: 50px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #374151;
+        width: 30px;
         text-align: right;
     }
 
-    /* Similar workouts */
-    .similar-workouts {
+    /* Papildu info */
+    .info-list {
         display: flex;
         flex-direction: column;
-        gap: 10px;
-    }
-
-    .similar-workout {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 12px;
-        border: 1px solid #eaeaea;
-        border-radius: 8px;
-        transition: border-color 0.2s;
-    }
-
-        .similar-workout:hover {
-            border-color: #007acc;
-        }
-
-    .similar-info {
-        flex: 1;
-    }
-
-    .similar-name {
-        font-size: 14px;
-        font-weight: 500;
-        color: #333;
-        margin-bottom: 4px;
-    }
-
-    .similar-date {
-        font-size: 12px;
-        color: #888;
-    }
-
-    .view-link {
-        font-size: 13px;
-        color: #007acc;
-        text-decoration: none;
-        padding: 4px 8px;
-        border-radius: 4px;
-        transition: background 0.2s;
-    }
-
-        .view-link:hover {
-            background: #e6f7ff;
-        }
-
-    /* Additional info */
-    .additional-info {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
     }
 
     .info-row {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 8px 0;
-        border-bottom: 1px solid #f0f0f0;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid #f3f4f6;
+        font-size: 0.8rem;
     }
 
         .info-row:last-child {
             border-bottom: none;
         }
 
-    .info-label {
-        font-size: 13px;
-        color: #666;
+    .info-lbl {
+        color: #6b7280;
     }
 
-    .info-value {
-        font-size: 14px;
+    .info-val {
+        font-weight: 600;
+        color: #111827;
+    }
+
+    /* Līdzīgi treniņi */
+    .similar-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .similar-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.6rem 0.75rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        transition: border-color 0.15s;
+    }
+
+        .similar-row:hover {
+            border-color: #ff8c42;
+        }
+
+    .similar-name {
+        font-size: 0.8rem;
         font-weight: 500;
-        color: #333;
+        color: #111827;
+        margin-bottom: 0.15rem;
     }
 
-    /* Modal (kopīgs ar Index) */
-    .modal {
+    .similar-date {
+        font-size: 0.72rem;
+        color: #9ca3af;
+    }
+
+    .similar-link {
+        font-size: 0.775rem;
+        color: #ff8c42;
+        text-decoration: none;
+        font-weight: 600;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+
+        .similar-link:hover {
+            color: #e65c00;
+        }
+
+    /* Modāls */
+    .modal-overlay {
         position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
+        inset: 0;
         background: rgba(0,0,0,0.5);
         display: flex;
         align-items: center;
         justify-content: center;
-        z-index: 1000;
+        z-index: 50;
+        padding: 1rem;
     }
 
-    .modal-content {
+    .modal {
         background: white;
-        border-radius: 12px;
-        padding: 30px;
-        max-width: 400px;
-        width: 90%;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        border-radius: 1rem;
+        max-width: 24rem;
+        width: 100%;
+        overflow: hidden;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.2);
     }
 
-        .modal-content h3 {
-            font-size: 20px;
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 10px;
+    .modal-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 1.1rem 1.25rem;
+        background: linear-gradient(135deg, #ef4444, #dc2626);
+        color: white;
+    }
+
+        .modal-header h3 {
+            font-size: 1rem;
+            font-weight: 700;
+            margin: 0;
         }
 
-        .modal-content p {
-            color: #666;
-            margin-bottom: 25px;
+    .modal-body {
+        padding: 1.1rem 1.25rem;
+    }
+
+        .modal-body p {
+            color: #4b5563;
+            font-size: 0.875rem;
             line-height: 1.5;
+            margin-bottom: 0.35rem;
         }
 
-    .modal-buttons {
+    .modal-warn {
+        color: #dc2626;
+        font-weight: 500;
+        font-size: 0.8rem !important;
+    }
+
+    .modal-footer {
         display: flex;
         justify-content: flex-end;
-        gap: 10px;
+        gap: 0.625rem;
+        padding: 0.875rem 1.25rem 1.1rem;
     }
 
     .btn-cancel {
-        padding: 10px 20px;
-        background: #f5f5f5;
-        border: 1px solid #ddd;
-        border-radius: 6px;
-        color: #666;
+        padding: 0.45rem 1.1rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        background: white;
+        color: #6b7280;
         font-weight: 500;
         cursor: pointer;
-        transition: all 0.2s;
+        font-size: 0.875rem;
+        transition: background 0.15s;
     }
 
         .btn-cancel:hover {
-            background: #eaeaea;
-            color: #333;
+            background: #f3f4f6;
         }
 
     .btn-confirm {
-        padding: 10px 20px;
-        background: #dc3545;
-        color: white;
+        padding: 0.45rem 1.1rem;
         border: none;
-        border-radius: 6px;
-        font-weight: 500;
+        border-radius: 0.5rem;
+        background: #ef4444;
+        color: white;
+        font-weight: 600;
         cursor: pointer;
-        transition: background 0.2s;
+        font-size: 0.875rem;
+        transition: background 0.15s;
     }
 
         .btn-confirm:hover {
-            background: #c82333;
+            background: #dc2626;
         }
+
+    /* Mobilais */
+    @media (max-width: 480px) {
+        .topbar {
+            padding: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .topbar-title {
+            font-size: 1.1rem;
+        }
+
+        .quick-stats {
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.625rem;
+        }
+
+        .qstat-val {
+            font-size: 1.375rem;
+        }
+
+        .content {
+            grid-template-columns: 1fr;
+        }
+
+        .sets-grid {
+            grid-template-columns: repeat(auto-fill, minmax(75px, 1fr));
+        }
+
+        .muscle-name {
+            width: 75px;
+            font-size: 0.72rem;
+        }
+    }
 </style>

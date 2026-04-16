@@ -1,1558 +1,1278 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
-import { router, usePage } from '@inertiajs/vue3';
+import { router } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import axios from 'axios';
 import Modal from '@/Components/Modal.vue';
 import { useModal } from '@/Composables/useModal';
 
-const page = usePage();
 const { modalRef, confirm, alert, success, error } = useModal();
 
-// ========== PROPS DEFINĒŠANA ==========
+// ========== PROPS ==========
 const props = defineProps({
-    availableExercises: {
-        type: Array,
-        default: () => []
-    },
-    initialWorkout: {
-        type: Object,
-        default: () => ({})
-    },
-    workoutSession: {
-        type: Object,
-        default: null
-    }
+    availableExercises: { type: Array,  default: () => [] },
+    initialWorkout:     { type: Object, default: () => ({}) },
+    workoutSession:     { type: Object, default: null }
 });
 
-// ========== REAKTĪVIE MAINĪGIE ==========
-// Hronometra stāvokļi
-const timer = ref(0);
+// ========== HRONOMETRS ==========
+const timer        = ref(0);
 const timerRunning = ref(false);
 let timerInterval: NodeJS.Timeout | null = null;
 
-// Treniņa dati
-const workoutName = ref(props.initialWorkout?.name || 'Brīvais treniņš');
-const workoutExercises = ref<any[]>([]);
-const activeExercise = ref<any>(null);
-const workoutSessionId = ref(props.workoutSession?.id || null);
+const pad = (n: number) => n.toString().padStart(2, '0');
 
-// Meklēšana un filtri
-const searchQuery = ref('');
-const selectedMuscleGroups = ref<string[]>([]);
-
-// ========== COMPUTED PROPERTIES ==========
-// Pašreizējais datums
-const currentDate = computed(() => {
-    return new Date().toLocaleDateString('lv-LV', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-    });
-});
-
-// Viegli pieejamas muskuļu grupas
-const muscleGroups = computed(() => {
-    const groups = new Set<string>();
-    props.availableExercises.forEach((ex: any) => {
-        if (ex.muscle_group) {
-            groups.add(ex.muscle_group);
-        }
-    });
-    return Array.from(groups).sort();
-});
-
-// Filtrēti vingrinājumi
-const filteredExercises = computed(() => {
-    return props.availableExercises.filter((exercise: any) => {
-        const matchesSearch = searchQuery.value === '' ||
-            exercise.name.toLowerCase().includes(searchQuery.value.toLowerCase());
-        const matchesMuscleGroup = selectedMuscleGroups.value.length === 0 ||
-            selectedMuscleGroups.value.includes(exercise.muscle_group);
-        return matchesSearch && matchesMuscleGroup;
-    });
-});
-
-// Pabeigto vingrinājumu skaits
-const completedExercisesCount = computed(() => {
-    return workoutExercises.value.filter((ex: any) =>
-        ex.completedSets?.length === ex.sets
-    ).length;
-});
-
-// Formatētais laiks
 const formattedTime = computed(() => {
-    const seconds = timer.value;
-    const hrs = Math.floor(seconds / 3600);
-    const mins = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-
-    if (hrs > 0) {
-        return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-    }
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    const h = Math.floor(timer.value / 3600);
+    const m = Math.floor((timer.value % 3600) / 60);
+    const s = timer.value % 60;
+    return h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
 });
 
-// ========== FUNKCIJAS ==========
-// Hronometra funkcijas
 const toggleTimer = () => {
     if (timerRunning.value) {
-        if (timerInterval) {
-            clearInterval(timerInterval);
-            timerInterval = null;
-        }
+        clearInterval(timerInterval!);
+        timerInterval      = null;
         timerRunning.value = false;
     } else {
         timerRunning.value = true;
-        timerInterval = setInterval(() => {
-            timer.value++;
-        }, 1000);
+        timerInterval      = setInterval(() => timer.value++, 1000);
     }
 };
 
-const resetTimer = () => {
-    if (timerInterval) {
-        clearInterval(timerInterval);
-        timerInterval = null;
-    }
-    timerRunning.value = false;
-    timer.value = 0;
-    localStorage.removeItem('workout_timer');
-    localStorage.removeItem('workout_start_time');
+const calculateElapsed = (startTime: string) =>
+    !startTime ? 0 : Math.floor((Date.now() - new Date(startTime).getTime()) / 1000);
+
+// ========== TRENIŅA STĀVOKLIS ==========
+const workoutName      = ref(props.initialWorkout?.name || 'Brīvais treniņš');
+const workoutSessionId = ref(props.workoutSession?.id || null);
+const exercises        = ref<any[]>([]);
+
+// ========== MEKLĒŠANA ==========
+const searchOpen           = ref(false);
+const searchQuery          = ref('');
+const selectedMuscleGroups = ref<string[]>([]);
+
+const muscleGroups = computed(() => {
+    const g = new Set<string>();
+    props.availableExercises.forEach((e: any) => { if (e.muscle_group) g.add(e.muscle_group); });
+    return Array.from(g).sort();
+});
+
+const filteredExercises = computed(() =>
+    props.availableExercises.filter((e: any) => {
+        const matchSearch = !searchQuery.value ||
+            e.name.toLowerCase().includes(searchQuery.value.toLowerCase());
+        const matchGroup = !selectedMuscleGroups.value.length ||
+            selectedMuscleGroups.value.includes(e.muscle_group);
+        return matchSearch && matchGroup;
+    })
+);
+
+const toggleMuscleGroup = (g: string) => {
+    const i = selectedMuscleGroups.value.indexOf(g);
+    i > -1 ? selectedMuscleGroups.value.splice(i, 1) : selectedMuscleGroups.value.push(g);
 };
 
-// Aprēķina pagājušo laiku no starta laika
-const calculateElapsedTime = (startTime: string) => {
-    if (!startTime) return 0;
-    const start = new Date(startTime);
-    const now = new Date();
-    return Math.floor((now.getTime() - start.getTime()) / 1000);
-};
+const openSearch  = () => { searchQuery.value = ''; searchOpen.value = true; };
+const closeSearch = () => { searchOpen.value = false; };
 
-// Sākt treniņu sesiju
-const startWorkoutSession = async (): Promise<string | null> => {
-    try {
-        const response = await axios.post('/workout/free/start', {
-            name: workoutName.value
-        });
-
-        if (response.data?.success && response.data.session_id) {
-            workoutSessionId.value = response.data.session_id;
-
-            // Saglabā starta laiku
-            const startTime = new Date().toISOString();
-            localStorage.setItem('workout_start_time', startTime);
-            localStorage.removeItem('workout_timer');
-
-            // Start timer
-            if (!timerRunning.value) {
-                toggleTimer();
-            }
-
-            return response.data.session_id;
-        }
-        throw new Error(response.data?.message || 'Unknown error');
-    } catch (error: any) {
-        console.error('Error starting workout session:', error);
-        let errorMessage = 'Kļūda sākot treniņu';
-        if (error.response?.data?.message) {
-            errorMessage += ': ' + error.response.data.message;
-        } else if (error.message) {
-            errorMessage += ': ' + error.message;
-        }
-        await error(errorMessage);
-        return null;
-    }
-};
-
-// Ielādēt sesijas datus
-const loadWorkoutSession = async () => {
+// ========== SESIJA ==========
+const loadSession = async () => {
     if (!workoutSessionId.value) return;
-
     try {
-        const response = await axios.get(`/api/workout-session/${workoutSessionId.value}`);
-        if (response.data) {
-            workoutExercises.value = response.data.exercises.map((exercise: any) => ({
-                id: exercise.id,
-                session_exercise_id: exercise.session_exercise_id,
-                name: exercise.name,
-                muscle_group: exercise.muscle_group,
-                sets: exercise.sets_planned,
-                reps: exercise.reps_planned,
-                weight: 0,
-                currentSet: exercise.sets_completed + 1,
-                completedSets: exercise.reps_completed?.map((reps: number, index: number) => ({
-                    reps: reps,
-                    weight: exercise.weights_used?.[index] || 0,
-                    completedAt: new Date().toISOString()
-                })) || [],
-                restTime: 60
-            }));
-
-            if (workoutExercises.value.length > 0 && !activeExercise.value) {
-                setActiveExercise(workoutExercises.value[0]);
-            }
-
-            workoutName.value = response.data.name || workoutName.value;
-
-            if (response.data.started_at) {
-                const elapsedTime = calculateElapsedTime(response.data.started_at);
-                timer.value = elapsedTime;
-                localStorage.setItem('workout_timer', elapsedTime.toString());
-                localStorage.setItem('workout_start_time', response.data.started_at);
-
-                if (!timerRunning.value) {
-                    toggleTimer();
-                }
-            }
+        const r = await axios.get(`/api/workout-session/${workoutSessionId.value}`);
+        if (!r.data) return;
+        workoutName.value = r.data.name || workoutName.value;
+        exercises.value   = r.data.exercises.map((ex: any) => ({
+            id:                  ex.id,
+            session_exercise_id: ex.session_exercise_id,
+            name:                ex.name,
+            muscle_group:        ex.muscle_group,
+            sets: [
+                ...(ex.reps_completed || []).map((reps: number, i: number) => ({
+                    reps, weight: ex.weights_used?.[i] || 0, done: true
+                })),
+                ...Array.from(
+                    { length: Math.max(0, ex.sets_planned - (ex.reps_completed?.length || 0)) },
+                    () => ({ reps: 10, weight: 0, done: false })
+                )
+            ]
+        }));
+        if (r.data.started_at) {
+            timer.value = calculateElapsed(r.data.started_at);
+            if (!timerRunning.value) toggleTimer();
         }
-    } catch (error) {
-        console.error('Error loading workout session:', error);
-    }
+    } catch (e) { console.error('Kļūda ielādējot sesiju:', e); }
 };
 
-// Pievienot vingrinājumu
-const addExercise = async (exercise: any) => {
+const ensureSession = async (): Promise<boolean> => {
+    if (workoutSessionId.value) return true;
     try {
-        if (!workoutSessionId.value) {
-            const sessionId = await startWorkoutSession();
-            if (!sessionId) return;
+        const r = await axios.post('/workout/free/start', { name: workoutName.value });
+        if (r.data?.success) {
+            workoutSessionId.value = r.data.session_id;
+            localStorage.setItem('workout_start_time', new Date().toISOString());
+            if (!timerRunning.value) toggleTimer();
+            return true;
         }
+    } catch (e) { console.error(e); }
+    return false;
+};
 
-        // Pārbauda, vai vingrinājums jau eksistē
-        const existingIndex = workoutExercises.value.findIndex(ex => ex.id === exercise.id);
-        if (existingIndex !== -1) {
-            setActiveExercise(workoutExercises.value[existingIndex]);
-            return;
-        }
-
-        // Pievieno backendā
-        await axios.post(`/workout/${workoutSessionId.value}/exercises`, {
-            exercise_id: exercise.id,
+// ========== VINGRINĀJUMA PIEVIENOŠANA ==========
+const addExercise = async (exercise: any) => {
+    if (exercises.value.find((e: any) => e.id === exercise.id)) {
+        closeSearch();
+        return;
+    }
+    const ok = await ensureSession();
+    if (!ok) return;
+    try {
+        const r = await axios.post(`/workout/${workoutSessionId.value}/exercises`, {
+            exercise_id:  exercise.id,
             sets_planned: 3,
             reps_planned: 10
         });
-
-        // Atjaunina visu sarakstu no servera
-        await loadWorkoutSession();
-
-    } catch (error: any) {
-        console.error('Error adding exercise:', error);
-        if (error.response?.status === 404) {
-            await error('Treniņa sesija nav atrasta. Lūdzu, sāciet jaunu treniņu.');
-        } else {
-            await error('Kļūda pievienojot vingrinājumu: ' + (error.response?.data?.message || error.message));
-        }
-    }
+        exercises.value.push({
+            id:                  exercise.id,
+            session_exercise_id: r.data.session_exercise_id ?? null,
+            name:                exercise.name,
+            muscle_group:        exercise.muscle_group,
+            sets: [
+                { reps: 10, weight: 0, done: false },
+                { reps: 10, weight: 0, done: false },
+                { reps: 10, weight: 0, done: false }
+            ]
+        });
+        closeSearch();
+        await loadSession();
+    } catch (e) { console.error(e); }
 };
 
-// Noņemt vingrinājumu
-const removeExercise = async (index: number) => {
-    const removedExercise = workoutExercises.value[index];
-
+const removeExercise = async (exIndex: number) => {
+    const ex = exercises.value[exIndex];
     try {
-        if (removedExercise.session_exercise_id && workoutSessionId.value) {
-            await axios.delete(`/workout/${workoutSessionId.value}/exercises/${removedExercise.session_exercise_id}`);
-        }
-
-        workoutExercises.value.splice(index, 1);
-
-        // Ja tika noņemts aktīvais vingrinājums
-        if (activeExercise.value && activeExercise.value.id === removedExercise.id) {
-            if (workoutExercises.value.length > 0) {
-                setActiveExercise(workoutExercises.value[0]);
-            } else {
-                activeExercise.value = null;
-            }
-        }
-    } catch (error) {
-        console.error('Error removing exercise:', error);
+        if (workoutSessionId.value && ex.session_exercise_id)
+            await axios.delete(`/workout/${workoutSessionId.value}/exercises/${ex.session_exercise_id}`);
+        exercises.value.splice(exIndex, 1);
+    } catch (e) {
+        console.error(e);
         await error('Kļūda noņemot vingrinājumu');
     }
 };
 
-const setActiveExercise = (exercise: any) => {
-    activeExercise.value = { ...exercise };
-};
-
-const updateReps = (change: number) => {
-    if (activeExercise.value) {
-        const newReps = activeExercise.value.reps + change;
-        if (newReps >= 1 && newReps <= 50) {
-            activeExercise.value.reps = newReps;
-
-            const index = workoutExercises.value.findIndex((ex: any) => ex.id === activeExercise.value.id);
-            if (index !== -1) {
-                workoutExercises.value[index].reps = newReps;
-            }
-        }
-    }
-};
-
-const updateWeight = (change: number) => {
-    if (activeExercise.value) {
-        const newWeight = parseFloat((activeExercise.value.weight + change).toFixed(1));
-        if (newWeight >= 0) {
-            activeExercise.value.weight = newWeight;
-
-            const index = workoutExercises.value.findIndex((ex: any) => ex.id === activeExercise.value.id);
-            if (index !== -1) {
-                workoutExercises.value[index].weight = newWeight;
-            }
-        }
-    }
-};
-
-// Pabeigt setu
-const completeSet = async () => {
-    if (!activeExercise.value) return;
-
+// ========== SETU DARBĪBAS ==========
+const completeSet = async (exIndex: number, setIndex: number) => {
+    const ex  = exercises.value[exIndex];
+    const set = ex.sets[setIndex];
+    set.done  = true;
     try {
-        const completedSet = {
-            reps: activeExercise.value.reps,
-            weight: activeExercise.value.weight,
-            completedAt: new Date().toISOString()
-        };
-
-        const index = workoutExercises.value.findIndex((ex: any) => ex.id === activeExercise.value.id);
-        if (index !== -1) {
-            // Saglabā backendā
-            if (workoutSessionId.value && workoutExercises.value[index].session_exercise_id) {
-                await axios.post(
-                    `/workout/${workoutSessionId.value}/exercises/${workoutExercises.value[index].session_exercise_id}/set`,
-                    {
-                        set_index: workoutExercises.value[index].completedSets.length,
-                        reps: completedSet.reps,
-                        weight: completedSet.weight
-                    }
-                );
-            }
-
-            // Pievieno lokāli
-            workoutExercises.value[index].completedSets.push(completedSet);
-            workoutExercises.value[index].currentSet++;
-
-            if (workoutExercises.value[index].currentSet <= workoutExercises.value[index].sets) {
-                // Atjaunina nākamo setu
-                workoutExercises.value[index].reps = 10;
-                workoutExercises.value[index].weight = 0;
-                activeExercise.value = { ...workoutExercises.value[index] };
-            } else {
-                // Pāriet uz nākamo vingrinājumu
-                const nextIndex = (index + 1) % workoutExercises.value.length;
-                if (workoutExercises.value.length > 0) {
-                    setActiveExercise(workoutExercises.value[nextIndex]);
-                } else {
-                    activeExercise.value = null;
-                }
-            }
-        }
-    } catch (error: any) {
-        console.error('Error completing set:', error);
-        await error('Kļūda saglabājot setu: ' + (error.response?.data?.message || error.message));
+        if (workoutSessionId.value && ex.session_exercise_id)
+            await axios.post(
+                `/workout/${workoutSessionId.value}/exercises/${ex.session_exercise_id}/set`,
+                { set_index: setIndex, reps: set.reps, weight: set.weight }
+            );
+    } catch (e) {
+        console.error('Kļūda saglabājot setu:', e);
+        set.done = false;
     }
 };
 
-// Pabeigt treniņu
+const undoSet   = (exIndex: number, setIndex: number) => { exercises.value[exIndex].sets[setIndex].done = false; };
+const removeSet = (exIndex: number, setIndex: number) => { exercises.value[exIndex].sets.splice(setIndex, 1); };
+const addSet    = (exIndex: number) => {
+    const last = [...exercises.value[exIndex].sets].reverse().find((s: any) => s.done);
+    exercises.value[exIndex].sets.push({ reps: last?.reps ?? 10, weight: last?.weight ?? 0, done: false });
+};
+
+// ========== STATISTIKA ==========
+const totalSets = computed(() => exercises.value.reduce((s: number, ex: any) => s + ex.sets.length, 0));
+const doneSets  = computed(() => exercises.value.reduce((s: number, ex: any) => s + ex.sets.filter((set: any) => set.done).length, 0));
+
+// ========== PABEIGT / ATCELT ==========
 const completeWorkout = async () => {
-    if (workoutExercises.value.length === 0) {
-        await alert({
-            title: 'Nav vingrinājumu',
-            message: 'Lūdzu, pievieno vismaz vienu vingrinājumu!',
-            type: 'error'
-        });
+    if (!exercises.value.length) {
+        await alert({ title: 'Nav vingrinājumu', message: 'Pievieno vismaz vienu vingrinājumu!', type: 'error' });
         return;
     }
-
-    // Pārbauda, vai ir pabeigts vismaz 1 sets
-    const totalCompletedSets = workoutExercises.value.reduce((sum: number, ex: any) =>
-        sum + (ex.completedSets?.length || 0), 0);
-
-    if (totalCompletedSets === 0) {
-        await alert({
-            title: 'Nav pabeigtu setu',
-            message: 'Lai pabeigtu treniņu, ir jāpabeidz vismaz 1 sets!',
-            type: 'error'
-        });
+    if (!doneSets.value) {
+        await alert({ title: 'Nav pabeigtu setu', message: 'Pabeidz vismaz vienu setu!', type: 'error' });
         return;
     }
-
-    const totalSets = workoutExercises.value.reduce((sum: number, ex: any) =>
-        sum + (ex.sets || 0), 0);
-
     const confirmed = await confirm({
         title: 'Pabeigt treniņu?',
-        message: `Vai tiešām vēlies pabeigt treniņu?`,
+        message: 'Vai tiešām vēlies pabeigt treniņu?',
         details: {
-            'Treniņa nosaukums': workoutName.value,
-            'Ilgums': formattedTime.value,
-            'Vingrinājumi': workoutExercises.value.length,
-            'Pabeigtie seti': totalCompletedSets,
-            'Kopējie seti': totalSets
+            'Nosaukums': workoutName.value,
+            'Ilgums':    formattedTime.value,
+            'Seti':      `${doneSets.value}/${totalSets.value}`
         },
-        confirmText: 'Jā, pabeigt',
-        cancelText: 'Nē, turpināt'
+        confirmText: 'Pabeigt',
+        cancelText:  'Turpināt'
     });
-
     if (!confirmed) return;
-
-    if (timerRunning.value) {
-        toggleTimer();
-    }
-
+    if (timerRunning.value) toggleTimer();
     try {
-        if (workoutSessionId.value) {
-            const response = await axios.post(`/workout/${workoutSessionId.value}/complete`, {
-                duration_minutes: Math.round(timer.value / 60),
-                calories_burned: Math.round(timer.value / 60 * 5),
-                notes: ''
-            });
-
-            if (response.data.success) {
-                await success('Tavs treniņš ir veiksmīgi pabeigts!');
-                localStorage.removeItem('workout_timer');
-                localStorage.removeItem('workout_start_time');
-                router.visit('/dashboard');
-            } else {
-                await error(response.data.message || 'Nezināma kļūda');
-            }
+        const r = await axios.post(`/workout/${workoutSessionId.value}/complete`, {
+            duration_minutes: Math.max(1, Math.round(timer.value / 60)),
+            notes: ''
+        });
+        if (r.data.success) {
+            await success('Treniņš pabeigts!');
+            localStorage.removeItem('workout_start_time');
+            router.visit('/dashboard');
         }
-    } catch (error: any) {
-        console.error('Complete workout error:', error);
-        let errorMessage = 'Kļūda pabeidzot treniņu';
-        if (error.response?.data?.message) {
-            errorMessage += ': ' + error.response.data.message;
-        } else if (error.message) {
-            errorMessage += ': ' + error.message;
-        }
-        await error(errorMessage);
+    } catch (e: any) {
+        await error('Kļūda: ' + (e.response?.data?.message || e.message));
     }
 };
 
-const resetWorkout = async () => {
+const cancelWorkout = async () => {
     const confirmed = await confirm({
         title: 'Atcelt treniņu?',
         message: 'Vai tiešām vēlies atcelt treniņu? Visi dati tiks zaudēti.',
         confirmText: 'Jā, atcelt',
         cancelText: 'Nē'
     });
-
     if (!confirmed) return;
-
     try {
-        if (workoutSessionId.value) {
-            const response = await axios.post(`/workout/${workoutSessionId.value}/cancel`);
-
-            if (response.data.success) {
-                workoutExercises.value = [];
-                activeExercise.value = null;
-                workoutName.value = 'Brīvais treniņš - ' + new Date().toLocaleDateString('lv-LV');
-                workoutSessionId.value = null;
-                resetTimer();
-                localStorage.removeItem('workout_timer');
-                localStorage.removeItem('workout_start_time');
-                await success('Treniņš atcelts');
-                router.visit('/dashboard');
-            } else {
-                await error(response.data.message || 'Nezināma kļūda');
-            }
-        }
-    } catch (error: any) {
-        console.error('Error canceling workout:', error);
-        let errorMessage = 'Kļūda atceļot treniņu';
-        if (error.response?.data?.message) {
-            errorMessage += ': ' + error.response.data.message;
-        } else if (error.message) {
-            errorMessage += ': ' + error.message;
-        }
-        await error(errorMessage);
+        if (workoutSessionId.value)
+            await axios.post(`/workout/${workoutSessionId.value}/cancel`);
+        localStorage.removeItem('workout_start_time');
+        router.visit('/dashboard');
+    } catch (e: any) {
+        await error('Kļūda: ' + (e.response?.data?.message || e.message));
     }
 };
 
-const toggleMuscleGroup = (group: string) => {
-    const index = selectedMuscleGroups.value.indexOf(group);
-    if (index > -1) {
-        selectedMuscleGroups.value.splice(index, 1);
-    } else {
-        selectedMuscleGroups.value.push(group);
-    }
-};
-
-// Saglabā hronometru localStorage
-const saveTimerToLocalStorage = () => {
-    if (timerRunning.value) {
-        localStorage.setItem('workout_timer', timer.value.toString());
-    }
-};
-
-// Ielādē hronometru no localStorage
-const loadTimerFromLocalStorage = () => {
-    const savedTimer = localStorage.getItem('workout_timer');
-    const savedStartTime = localStorage.getItem('workout_start_time');
-
-    if (savedTimer && savedStartTime) {
-        const startTime = new Date(savedStartTime);
-        const now = new Date();
-        const hoursDiff = (now.getTime() - startTime.getTime()) / (1000 * 60 * 60);
-
-        if (hoursDiff < 24) {
-            const elapsedTime = calculateElapsedTime(savedStartTime);
-            timer.value = elapsedTime;
-            return true;
-        } else {
-            localStorage.removeItem('workout_timer');
-            localStorage.removeItem('workout_start_time');
-        }
-    }
-    return false;
-};
-
-// ========== LIFECYCLE HOOKS ==========
+// ========== LIFECYCLE ==========
 onMounted(() => {
-    console.log('Component mounted with props:', props);
-
-    // Mēģina ielādēt hronometru no localStorage
-    const hasSavedTimer = loadTimerFromLocalStorage();
-
-    // Pārbauda, vai lapā ienāk ar aktīvu sesiju
     if (props.workoutSession) {
         workoutSessionId.value = props.workoutSession.id;
-        console.log('Workout session from props:', props.workoutSession);
-
-        // Ielādē sesijas datus
-        loadWorkoutSession();
-
-        // Iestata hronometru no sesijas starta laika
-        if (props.workoutSession.started_at) {
-            const elapsedTime = calculateElapsedTime(props.workoutSession.started_at);
-            timer.value = elapsedTime;
-            console.log('Timer set from session start time:', elapsedTime);
-        }
-
-    } else if (hasSavedTimer) {
-        console.log('Timer loaded from localStorage:', timer.value);
-        if (!timerRunning.value) {
-            toggleTimer();
+        loadSession();
+        if (props.workoutSession.started_at)
+            timer.value = calculateElapsed(props.workoutSession.started_at);
+        if (!timerRunning.value) toggleTimer();
+    } else {
+        const saved = localStorage.getItem('workout_start_time');
+        if (saved && calculateElapsed(saved) < 86400) {
+            timer.value = calculateElapsed(saved);
+            if (!timerRunning.value) toggleTimer();
         }
     }
-
-    // Sāk hronometru automātiski, ja ir sesija un nav sākts
-    if (!timerRunning.value && workoutSessionId.value) {
-        console.log('Starting timer for session:', workoutSessionId.value);
-        toggleTimer();
-    }
-
-    // Saglabā timer ik pēc 30 sekundēm
-    const saveInterval = setInterval(saveTimerToLocalStorage, 30000);
-
-    // Notīrām intervālu, kad komponents tiek noņemts
-    return () => {
-        clearInterval(saveInterval);
-        if (timerInterval) {
-            clearInterval(timerInterval);
-        }
-    };
 });
 
-// Saglabā timer, kad tas mainās
 watch(timer, () => {
-    if (timerRunning.value && timer.value % 30 === 0) {
-        saveTimerToLocalStorage();
-    }
+    if (timerRunning.value && timer.value % 30 === 0)
+        localStorage.setItem('workout_timer', timer.value.toString());
 });
 
-onUnmounted(() => {
-    if (timerInterval) {
-        clearInterval(timerInterval);
-    }
-});
+onUnmounted(() => { if (timerInterval) clearInterval(timerInterval); });
 </script>
 
 <template>
     <AppLayout>
-        <div class="dashboard-container">
-            <div class="dashboard">
-                <!-- Header -->
-                <div class="welcome-header">
-                    <div class="header-content">
-                        <h1>Brīvais treniņš</h1>
-                        <p>Treniņš bez rutīnas</p>
-                    </div>
-                    <div class="date-display">
-                        <svg class="date-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        <div class="page">
+
+            <!-- Galvene -->
+            <div class="topbar">
+                <div class="topbar-left">
+                    <input v-model="workoutName" class="workout-title-input" placeholder="Treniņa nosaukums" />
+                    <span class="topbar-date">
+                        {{ new Date().toLocaleDateString('lv-LV', { weekday: 'long', day: 'numeric', month: 'long' }) }}
+                    </span>
+                </div>
+                <div class="topbar-center">
+                    <div class="timer-wrap">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="15" height="15" style="flex-shrink:0;color:rgba(255,255,255,0.8)">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
-                        <span class="date-text">{{ currentDate }}</span>
-                    </div>
-                </div>
-
-                <!-- Hronometrs -->
-                <div class="timer-section">
-                    <h2 class="timer-title">Treniņa laiks</h2>
-                    <div class="timer-display">{{ formattedTime }}</div>
-                    <div class="timer-controls">
-                        <button @click="toggleTimer" class="timer-btn" :class="timerRunning ? 'pause-btn' : 'start-btn'">
-                            {{ timerRunning ? '⏸️ Pauze' : '▶️ Sākt' }}
-                        </button>
-                        <button @click="resetTimer" class="timer-btn reset-btn">
-                            🔄 Atiestatīt
+                        <span class="timer-display">{{ formattedTime }}</span>
+                        <button @click="toggleTimer" class="timer-toggle" :class="{ 'timer-paused': !timerRunning }">
+                            {{ timerRunning ? '⏸' : '▶' }}
                         </button>
                     </div>
                 </div>
+                <div class="topbar-right">
+                    <button @click="cancelWorkout" class="btn-cancel">Atcelt</button>
+                    <button @click="completeWorkout" class="btn-finish">
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="15" height="15">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
+                        </svg>
+                        Pabeigt
+                    </button>
+                </div>
+            </div>
 
-                <!-- Galvenais saturs -->
-                <div class="workout-content">
-                    <!-- Kreisā kolonna -->
-                    <div class="left-panel">
-                        <!-- Treniņa nosaukums -->
-                        <div class="card">
-                            <div class="card-header">
-                                <h2 class="card-title">Treniņa informācija</h2>
-                            </div>
-                            <div class="card-body">
-                                <input v-model="workoutName"
-                                       type="text"
-                                       class="workout-name-input"
-                                       placeholder="Ievadi treniņa nosaukumu...">
-                            </div>
+            <!-- Progresa josla -->
+            <div class="progress-wrap">
+                <div class="progress-fill"
+                     :style="{ width: totalSets ? (doneSets / totalSets * 100) + '%' : '0%' }"></div>
+            </div>
+
+            <!-- Vingrinājumu saraksts -->
+            <div class="exercises-list">
+
+                <div v-for="(ex, exIndex) in exercises" :key="ex.id" class="exercise-card">
+
+                    <!-- Virsraksts -->
+                    <div class="exercise-header">
+                        <div class="exercise-header-info">
+                            <span class="exercise-name">{{ ex.name }}</span>
+                            <span class="exercise-muscle-badge">{{ ex.muscle_group }}</span>
                         </div>
-
-                        <!-- Vingrinājumu meklēšana -->
-                        <div class="card">
-                            <div class="card-header">
-                                <h2 class="card-title">Pieejamie vingrinājumi</h2>
-                                <span class="exercise-count">{{ availableExercises.length }} pieejami</span>
-                            </div>
-                            <div class="card-body">
-                                <input v-model="searchQuery"
-                                       type="text"
-                                       class="search-input"
-                                       placeholder="Meklēt vingrinājumus...">
-
-                                <div class="filter-buttons">
-                                    <button v-for="group in muscleGroups" :key="group"
-                                            @click="toggleMuscleGroup(group)"
-                                            class="filter-btn"
-                                            :class="{ 'active-filter': selectedMuscleGroups.includes(group) }">
-                                        {{ group }}
-                                    </button>
-                                </div>
-
-                                <div class="exercise-list">
-                                    <div v-for="exercise in filteredExercises" :key="exercise.id"
-                                         class="exercise-item"
-                                         @click="addExercise(exercise)">
-                                        <div class="exercise-info">
-                                            <div class="exercise-name">{{ exercise.name }}</div>
-                                            <div class="exercise-muscle">{{ exercise.muscle_group }}</div>
-                                        </div>
-                                        <button class="add-exercise-btn">+ Pievienot</button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                        <button @click="removeExercise(exIndex)" class="btn-remove-ex" title="Noņemt">✕</button>
                     </div>
 
-                    <!-- Labā kolonna -->
-                    <div class="right-panel">
-                        <!-- Aktīvais vingrinājums -->
-                        <div v-if="activeExercise" class="card active-exercise-card">
-                            <div class="card-body">
-                                <div class="active-exercise-header">
-                                    <div class="exercise-header-left">
-                                        <div class="exercise-title">{{ activeExercise.name }}</div>
-                                        <div class="exercise-muscle-badge">{{ activeExercise.muscle_group }}</div>
-                                    </div>
-                                    <div class="exercise-sets-info">
-                                        Seti: {{ activeExercise.currentSet }}/{{ activeExercise.sets }}
-                                    </div>
-                                </div>
-
-                                <!-- Setu statistika -->
-                                <div class="set-stats">
-                                    <div class="stat-box">
-                                        <div class="stat-value">{{ activeExercise.currentSet }}</div>
-                                        <div class="stat-label">Pašreizējais sets</div>
-                                    </div>
-                                    <div class="stat-box">
-                                        <div class="stat-value">{{ activeExercise.reps }}</div>
-                                        <div class="stat-label">Atkārtojumi</div>
-                                    </div>
-                                    <div class="stat-box">
-                                        <div class="stat-value">{{ activeExercise.weight || 0 }}</div>
-                                        <div class="stat-label">Svars (kg)</div>
-                                    </div>
-                                </div>
-
-                                <!-- Setu kontrole -->
-                                <div class="set-controls">
-                                    <h3 class="control-title">Setu reģistrēšana</h3>
-
-                                    <div class="control-group">
-                                        <div class="control-label">Atkārtojumi</div>
-                                        <div class="control-input-group">
-                                            <button @click="updateReps(-1)" class="control-btn">-</button>
-                                            <input v-model.number="activeExercise.reps"
-                                                   type="number"
-                                                   class="control-input">
-                                            <button @click="updateReps(1)" class="control-btn">+</button>
-                                        </div>
-                                    </div>
-
-                                    <div class="control-group">
-                                        <div class="control-label">Svars (kg)</div>
-                                        <div class="control-input-group">
-                                            <button @click="updateWeight(-2.5)" class="control-btn">-2.5</button>
-                                            <input v-model.number="activeExercise.weight"
-                                                   type="number"
-                                                   step="0.5"
-                                                   class="control-input">
-                                            <button @click="updateWeight(2.5)" class="control-btn">+2.5</button>
-                                        </div>
-                                    </div>
-
-                                    <button @click="completeSet"
-                                            class="complete-exercise-btn">
-                                        Pabeigt setu
-                                    </button>
-                                </div>
-
-                                <!-- Pabeigtie seti -->
-                                <div v-if="activeExercise.completedSets.length > 0" class="completed-sets">
-                                    <h4 class="completed-sets-title">Pabeigtie seti:</h4>
-                                    <div class="sets-grid">
-                                        <div v-for="(set, index) in activeExercise.completedSets" :key="index"
-                                             class="set-badge">
-                                            <div class="set-reps">{{ set.reps }}x</div>
-                                            <div class="set-weight">{{ set.weight }}kg</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Treniņa plāns -->
-                        <div class="card">
-                            <div class="card-header">
-                                <h2 class="card-title">Treniņa plāns</h2>
-                                <span class="exercise-count">{{ workoutExercises.length }} vingrinājumi</span>
-                            </div>
-                            <div class="card-body">
-                                <div v-if="workoutExercises.length > 0" class="workout-plan-list">
-                                    <div v-for="(exercise, index) in workoutExercises" :key="exercise.id"
-                                         class="plan-exercise"
-                                         :class="{ 'active-plan': exercise.id === activeExercise?.id }"
-                                         @click="setActiveExercise(exercise)">
-                                        <div class="plan-exercise-info">
-                                            <div class="exercise-number">{{ index + 1 }}</div>
-                                            <div class="exercise-details">
-                                                <div class="plan-exercise-name">{{ exercise.name }}</div>
-                                                <div class="plan-exercise-muscle">{{ exercise.muscle_group }}</div>
-                                            </div>
-                                        </div>
-                                        <div class="plan-exercise-actions">
-                                            <div class="exercise-sets-reps">{{ exercise.sets }}x{{ exercise.reps }}</div>
-                                            <div v-if="exercise.completedSets.length > 0"
-                                                 class="exercise-progress">
-                                                {{ exercise.completedSets.length }}/{{ exercise.sets }}
-                                            </div>
-                                            <button @click.stop="removeExercise(index)"
-                                                    class="remove-exercise-btn">
-                                                ✕
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div v-else class="empty-state">
-                                    <div class="empty-icon">🏋️</div>
-                                    <div class="empty-title">Vēl nav pievienotu vingrinājumu</div>
-                                    <div class="empty-description">Izvēlies vingrinājumus no kreisās kolonnas</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Darbības pogas -->
-                        <div class="action-buttons">
-                            <button @click="completeWorkout"
-                                    :disabled="workoutExercises.length === 0"
-                                    class="action-btn complete-workout-btn"
-                                    :class="{ 'disabled-btn': workoutExercises.length === 0 }">
-                                <svg class="action-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                                </svg>
-                                Pabeigt treniņu
-                            </button>
-                            <button @click="resetWorkout"
-                                    class="action-btn reset-workout-btn">
-                                <svg class="action-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                                Dzēst treniņu
-                            </button>
-                        </div>
+                    <!-- Kolonnu galvene -->
+                    <div class="sets-header">
+                        <span class="col-num">#</span>
+                        <span class="col-prev">Iepriekš</span>
+                        <span class="col-kg">kg</span>
+                        <span class="col-reps">Reiz.</span>
+                        <span class="col-action"></span>
                     </div>
+
+                    <!-- Setu rindas -->
+                    <div v-for="(set, setIndex) in ex.sets"
+                         :key="setIndex"
+                         class="set-row"
+                         :class="{ 'set-row-done': set.done }">
+                        <span class="col-num set-num">{{ setIndex + 1 }}</span>
+
+                        <span class="col-prev set-prev">
+                            {{
+ setIndex > 0 && ex.sets[setIndex - 1]?.done
+                                ? `${ex.sets[setIndex-1].weight}kg × ${ex.sets[setIndex-1].reps}`
+                                : '—'
+                            }}
+                        </span>
+
+                        <span class="col-kg">
+                            <input v-model.number="set.weight"
+                                   type="number" step="0.5" min="0"
+                                   class="set-input"
+                                   :disabled="set.done" />
+                        </span>
+
+                        <span class="col-reps">
+                            <input v-model.number="set.reps"
+                                   type="number" min="1"
+                                   class="set-input"
+                                   :disabled="set.done" />
+                        </span>
+
+                        <span class="col-action">
+                            <button v-if="!set.done"
+                                    @click="completeSet(exIndex, setIndex)"
+                                    class="btn-check"
+                                    title="Pabeigt setu">
+                                ✓
+                            </button>
+                            <button v-else
+                                    @click="undoSet(exIndex, setIndex)"
+                                    class="btn-check btn-check-done"
+                                    title="Atcelt">
+                                ✓
+                            </button>
+                            <button @click="removeSet(exIndex, setIndex)"
+                                    class="btn-del-set"
+                                    title="Dzēst setu">
+                                ✕
+                            </button>
+                        </span>
+                    </div>
+
+                    <!-- Pievienot setu -->
+                    <button @click="addSet(exIndex)" class="btn-add-set">
+                        + Pievienot setu
+                    </button>
                 </div>
 
-                <!-- Apakšējā statusa josla -->
-                <div class="status-bar">
-                    <div class="status-content">
-                        <div class="status-info">
-                            <div class="status-indicator">
-                                <div class="status-dot"></div>
-                                <span class="status-text">Treniņš aktīvs</span>
+                <!-- Pievienot vingrinājumu -->
+                <button @click="openSearch" class="btn-add-exercise">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="18" height="18">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4" />
+                    </svg>
+                    Pievienot vingrinājumu
+                </button>
+
+                <div style="height: 1rem;"></div>
+            </div>
+            <!-- Statusa josla -->
+            <div class="statusbar">
+                <div class="status-item">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="13" height="13">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                    </svg>
+                    {{ exercises.length }} vingrinājumi
+                </div>
+                <div class="status-item">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="13" height="13">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                    {{ doneSets }}/{{ totalSets }} seti
+                </div>
+                <div class="status-item status-timer">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="13" height="13">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    {{ formattedTime }}
+                </div>
+                <button @click="completeWorkout" class="statusbar-finish-btn">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" width="15" height="15">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
+                    </svg>
+                    Pabeigt treniņu
+                </button>
+            </div>
+
+        </div>
+
+        <!-- Meklēšanas panelis -->
+        <Teleport to="body">
+            <div v-if="searchOpen" class="overlay" @click.self="closeSearch">
+                <div class="search-panel">
+                    <div class="search-panel-header">
+                        <h2 class="search-panel-title">Pievienot vingrinājumu</h2>
+                        <button @click="closeSearch" class="btn-close-search">✕</button>
+                    </div>
+
+                    <input v-model="searchQuery"
+                           class="search-input"
+                           placeholder="Meklēt vingrinājumu..."
+                           autofocus />
+
+                    <div class="filter-chips">
+                        <button v-for="g in muscleGroups" :key="g"
+                                @click="toggleMuscleGroup(g)"
+                                class="filter-chip"
+                                :class="{ 'filter-chip-active': selectedMuscleGroups.includes(g) }">
+                            {{ g }}
+                        </button>
+                    </div>
+
+                    <div class="search-results">
+                        <div v-for="ex in filteredExercises" :key="ex.id"
+                             class="search-item"
+                             @click="addExercise(ex)">
+                            <div class="search-item-left">
+                                <div class="search-item-name">{{ ex.name }}</div>
+                                <div class="search-item-muscle">{{ ex.muscle_group }}</div>
                             </div>
-                            <span class="status-count">{{ workoutExercises.length }} vingrinājumi</span>
-                            <span class="status-count">{{ completedExercisesCount }} pabeigti</span>
+                            <span class="search-item-add">+ Pievienot</span>
                         </div>
-                        <div class="status-timer">{{ formattedTime }}</div>
+                        <div v-if="!filteredExercises.length" class="search-empty">
+                            Nav atrasts neviens vingrinājums
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
+        </Teleport>
 
-        <!-- Modal komponents -->
         <Modal ref="modalRef" />
     </AppLayout>
 </template>
 
 <style scoped>
-    .dashboard-container {
+    /* ===== LAPA ===== */
+    .page {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 0 1rem 5rem;
         min-height: 100vh;
         background-color: #f3f4f6;
     }
 
-    .dashboard {
-        max-width: 1400px;
-        margin: 0 auto;
-        padding: 1.5rem;
-    }
-
-    /* Header */
-    .welcome-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 2rem;
-        padding: 1.5rem;
+    /* ===== TOPBAR ===== */
+    .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 20;
         background: linear-gradient(135deg, #ff8c42 0%, #e65c00 100%);
-        border-radius: 1rem;
-        color: white;
-    }
-
-    .header-content h1 {
-        font-size: 1.875rem;
-        font-weight: bold;
-        margin-bottom: 0.5rem;
-    }
-
-    .header-content p {
-        opacity: 0.9;
-        font-size: 1rem;
-    }
-
-    .date-display {
         display: flex;
         align-items: center;
+        justify-content: space-between;
+        padding: 1rem 1.25rem;
+        gap: 1rem;
+        margin: 0 -1rem;
+        box-shadow: 0 2px 12px rgba(230, 92, 0, 0.3);
+        flex-wrap: wrap;
+    }
+
+    .topbar-left {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .topbar-center {
+        flex-shrink: 0;
+    }
+
+    .topbar-right {
+        display: flex;
         gap: 0.5rem;
-        background: rgba(255, 255, 255, 0.2);
-        padding: 0.5rem 1rem;
-        border-radius: 0.5rem;
+        flex-shrink: 0;
     }
 
-    .date-icon {
-        width: 1.25rem;
-        height: 1.25rem;
+    .workout-title-input {
+        width: 100%;
+        border: none;
+        outline: none;
+        font-size: 1.125rem;
+        font-weight: 700;
+        color: white;
+        background: transparent;
+        display: block;
     }
 
-    .date-text {
-        font-size: 0.875rem;
-        font-weight: 500;
+        .workout-title-input::placeholder {
+            color: rgba(255,255,255,0.55);
+        }
+
+    .topbar-date {
+        font-size: 0.72rem;
+        color: rgba(255,255,255,0.75);
+        margin-top: 0.15rem;
+        display: block;
+        text-transform: capitalize;
     }
 
     /* Hronometrs */
-    .timer-section {
-        background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
-        color: white;
-        border-radius: 1rem;
-        padding: 1.5rem;
-        margin-bottom: 2rem;
-    }
-
-    .timer-title {
-        font-size: 1.25rem;
-        font-weight: 600;
-        margin-bottom: 1rem;
+    .timer-wrap {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        background: rgba(0,0,0,0.18);
+        padding: 0.4rem 0.75rem;
+        border-radius: 0.5rem;
     }
 
     .timer-display {
-        font-size: 3rem;
-        font-weight: bold;
         font-family: monospace;
+        font-size: 1.125rem;
+        font-weight: 700;
+        color: white;
+        min-width: 3.5rem;
         text-align: center;
-        margin-bottom: 1.5rem;
-        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
     }
 
-    .timer-controls {
+    .timer-toggle {
+        background: rgba(255,255,255,0.2);
+        border: none;
+        border-radius: 0.25rem;
+        width: 1.75rem;
+        height: 1.75rem;
+        color: white;
+        font-size: 0.7rem;
+        cursor: pointer;
         display: flex;
+        align-items: center;
         justify-content: center;
+        transition: background 0.15s;
+    }
+
+        .timer-toggle:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .timer-toggle.timer-paused {
+            background: rgba(0,0,0,0.2);
+        }
+
+    /* Topbar pogas */
+    .btn-cancel {
+        padding: 0.4rem 0.875rem;
+        border: 2px solid rgba(255,255,255,0.45);
+        border-radius: 0.5rem;
+        background: transparent;
+        color: white;
+        font-size: 0.875rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+
+        .btn-cancel:hover {
+            background: rgba(255,255,255,0.15);
+            border-color: white;
+        }
+
+    .btn-finish {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.4rem 0.875rem;
+        border: none;
+        border-radius: 0.5rem;
+        background: #111827;
+        color: white;
+        font-size: 0.875rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.15s;
+    }
+
+        .btn-finish:hover {
+            background: #1f2937;
+        }
+
+    /* ===== PROGRESA JOSLA ===== */
+    .progress-wrap {
+        height: 4px;
+        background: #e5e7eb;
+        margin: 0 -1rem;
+    }
+
+    .progress-fill {
+        height: 100%;
+        background: linear-gradient(to right, #ff8c42, #e65c00);
+        transition: width 0.4s ease;
+    }
+
+    /* ===== VINGRINĀJUMU SARAKSTS ===== */
+    .exercises-list {
+        padding-top: 1.25rem;
+        display: flex;
+        flex-direction: column;
         gap: 1rem;
     }
 
-    .timer-btn {
-        padding: 0.75rem 1.5rem;
-        border: none;
-        border-radius: 0.5rem;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s;
-    }
-
-    .start-btn {
-        background: white;
-        color: #4f46e5;
-    }
-
-        .start-btn:hover {
-            background: #f3f4f6;
-            transform: translateY(-1px);
-        }
-
-    .pause-btn {
-        background: #ef4444;
-        color: white;
-    }
-
-        .pause-btn:hover {
-            background: #dc2626;
-            transform: translateY(-1px);
-        }
-
-    .reset-btn {
-        background: #6b7280;
-        color: white;
-    }
-
-        .reset-btn:hover {
-            background: #4b5563;
-            transform: translateY(-1px);
-        }
-
-    /* Galvenais saturs */
-    .workout-content {
-        display: grid;
-        grid-template-columns: 1fr 2fr;
-        gap: 1.5rem;
-    }
-
-    @media (max-width: 1024px) {
-        .workout-content {
-            grid-template-columns: 1fr;
-        }
-    }
-
-    /* Kartiņas */
-    .card {
+    /* ===== VINGRINĀJUMA KARTE ===== */
+    .exercise-card {
         background: white;
         border-radius: 1rem;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
         border: 1px solid #e5e7eb;
         overflow: hidden;
-        margin-bottom: 1.5rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
     }
 
-        .card:last-child {
-            margin-bottom: 0;
-        }
-
-    .card-header {
+    .exercise-header {
         display: flex;
-        justify-content: space-between;
         align-items: center;
-        padding: 1.25rem 1.5rem;
-        border-bottom: 1px solid #e5e7eb;
+        justify-content: space-between;
+        padding: 1rem 1.25rem 0.75rem;
+        border-bottom: 1px solid #f3f4f6;
     }
 
-    .card-title {
-        font-size: 1.25rem;
-        font-weight: 600;
-        color: #111827;
-    }
-
-    .exercise-count {
-        font-size: 0.875rem;
-        color: #6b7280;
-    }
-
-    .card-body {
-        padding: 1.5rem;
-    }
-
-    /* Treniņa nosaukuma ievade */
-    .workout-name-input {
-        width: 100%;
-        padding: 0.75rem 1rem;
-        background: #f9fafb;
-        border: 1px solid #e5e7eb;
-        border-radius: 0.5rem;
-        font-size: 1rem;
-        color: #111827;
-        transition: all 0.2s;
-    }
-
-        .workout-name-input:focus {
-            outline: none;
-            border-color: #ff8c42;
-            box-shadow: 0 0 0 3px rgba(255, 140, 66, 0.1);
-            background: white;
-        }
-
-    /* Meklēšana */
-    .search-input {
-        width: 100%;
-        padding: 0.75rem 1rem;
-        background: #f9fafb;
-        border: 1px solid #e5e7eb;
-        border-radius: 0.5rem;
-        font-size: 0.875rem;
-        color: #111827;
-        margin-bottom: 1rem;
-        transition: all 0.2s;
-    }
-
-        .search-input:focus {
-            outline: none;
-            border-color: #ff8c42;
-            box-shadow: 0 0 0 3px rgba(255, 140, 66, 0.1);
-            background: white;
-        }
-
-    /* Filtru pogas */
-    .filter-buttons {
+    .exercise-header-info {
         display: flex;
+        align-items: center;
+        gap: 0.6rem;
         flex-wrap: wrap;
-        gap: 0.5rem;
-        margin-bottom: 1rem;
-    }
-
-    .filter-btn {
-        padding: 0.375rem 0.75rem;
-        background: #f3f4f6;
-        color: #6b7280;
-        border: 1px solid #e5e7eb;
-        border-radius: 9999px;
-        font-size: 0.75rem;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s;
-    }
-
-    .active-filter {
-        background: #ff8c42;
-        color: white;
-        border-color: #ff8c42;
-    }
-
-    .filter-btn:hover:not(.active-filter) {
-        background: #e5e7eb;
-        color: #374151;
-    }
-
-    /* Vingrinājumu saraksts */
-    .exercise-list {
-        max-height: 400px;
-        overflow-y: auto;
-    }
-
-    .exercise-item {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0.75rem;
-        margin-bottom: 0.5rem;
-        background: #f9fafb;
-        border: 1px solid #e5e7eb;
-        border-radius: 0.5rem;
-        cursor: pointer;
-        transition: all 0.2s;
-    }
-
-        .exercise-item:hover {
-            background: #f3f4f6;
-            border-color: #d1d5db;
-            transform: translateY(-1px);
-        }
-
-    .exercise-info {
-        flex: 1;
     }
 
     .exercise-name {
-        font-weight: 500;
+        font-size: 1rem;
+        font-weight: 700;
         color: #111827;
-        margin-bottom: 0.25rem;
-    }
-
-    .exercise-muscle {
-        font-size: 0.875rem;
-        color: #6b7280;
-    }
-
-    .add-exercise-btn {
-        padding: 0.25rem 0.75rem;
-        background: #ff8c42;
-        color: white;
-        border: none;
-        border-radius: 0.25rem;
-        font-size: 0.75rem;
-        font-weight: 500;
-        cursor: pointer;
-    }
-
-        .add-exercise-btn:hover {
-            background: #e65c00;
-        }
-
-    /* Aktīvais vingrinājums */
-    .active-exercise-card {
-        border: 2px solid #ff8c42;
-        background: #fff7ed;
-    }
-
-    .active-exercise-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        margin-bottom: 1.5rem;
-    }
-
-    .exercise-header-left {
-        flex: 1;
-    }
-
-    .exercise-title {
-        font-size: 1.5rem;
-        font-weight: bold;
-        color: #111827;
-        margin-bottom: 0.5rem;
     }
 
     .exercise-muscle-badge {
-        display: inline-block;
-        padding: 0.25rem 0.75rem;
-        background: #ff8c42;
-        color: white;
-        border-radius: 9999px;
-        font-size: 0.875rem;
-        font-weight: 500;
-    }
-
-    .exercise-sets-info {
-        font-size: 0.875rem;
-        color: #6b7280;
-    }
-
-    /* Setu statistika */
-    .set-stats {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 1rem;
-        margin-bottom: 1.5rem;
-    }
-
-    .stat-box {
-        background: white;
-        border-radius: 0.75rem;
-        padding: 1rem;
-        text-align: center;
-        border: 1px solid #e5e7eb;
-    }
-
-    .stat-value {
-        font-size: 2rem;
-        font-weight: bold;
-        color: #111827;
-        margin-bottom: 0.25rem;
-    }
-
-    .stat-label {
-        font-size: 0.875rem;
-        color: #6b7280;
-    }
-
-    /* Setu kontrole */
-    .control-title {
-        font-size: 1.125rem;
+        font-size: 0.7rem;
         font-weight: 600;
-        color: #111827;
-        margin-bottom: 1rem;
-    }
-
-    .control-group {
-        margin-bottom: 1rem;
-    }
-
-    .control-label {
-        display: block;
-        color: #6b7280;
-        margin-bottom: 0.5rem;
-        font-size: 0.875rem;
-    }
-
-    .control-input-group {
-        display: flex;
-        gap: 0.25rem;
-    }
-
-    .control-btn {
-        padding: 0.5rem 1rem;
-        background: #e5e7eb;
-        color: #374151;
-        border: 1px solid #d1d5db;
-        border-radius: 0.375rem;
-        cursor: pointer;
-        transition: all 0.2s;
-    }
-
-        .control-btn:hover {
-            background: #d1d5db;
-        }
-
-    .control-input {
-        flex: 1;
-        padding: 0.5rem;
-        text-align: center;
-        background: white;
-        border: 1px solid #d1d5db;
-        border-radius: 0.375rem;
-        font-size: 1rem;
-    }
-
-        .control-input:focus {
-            outline: none;
-            border-color: #ff8c42;
-            box-shadow: 0 0 0 3px rgba(255, 140, 66, 0.1);
-        }
-
-    .complete-exercise-btn {
-        width: 100%;
-        padding: 0.75rem;
-        background: linear-gradient(to right, #10b981, #059669);
-        color: white;
-        border: none;
-        border-radius: 0.5rem;
-        font-weight: 600;
-        cursor: pointer;
-        margin-top: 1rem;
-        transition: all 0.2s;
-    }
-
-        .complete-exercise-btn:hover {
-            background: linear-gradient(to right, #059669, #047857);
-            transform: translateY(-1px);
-        }
-
-    /* Pabeigtie seti */
-    .completed-sets {
-        margin-top: 1.5rem;
-        padding-top: 1.5rem;
-        border-top: 1px solid #e5e7eb;
-    }
-
-    .completed-sets-title {
-        font-size: 1rem;
-        color: #6b7280;
-        margin-bottom: 1rem;
-    }
-
-    .sets-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-        gap: 0.75rem;
-    }
-
-    .set-badge {
-        background: #f9fafb;
-        border-radius: 0.5rem;
-        padding: 0.75rem;
-        text-align: center;
-        border: 1px solid #e5e7eb;
-    }
-
-    .set-reps {
-        font-weight: bold;
-        color: #111827;
-        margin-bottom: 0.25rem;
-    }
-
-    .set-weight {
-        font-size: 0.875rem;
-        color: #6b7280;
-    }
-
-    /* Treniņa plāns */
-    .workout-plan-list {
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-    }
-
-    .plan-exercise {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0.75rem;
-        background: #f9fafb;
-        border: 2px solid transparent;
-        border-radius: 0.5rem;
-        cursor: pointer;
-        transition: all 0.2s;
-    }
-
-    .active-plan {
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #e65c00;
         background: #fff7ed;
-        border-color: #ff8c42;
+        padding: 0.15rem 0.55rem;
+        border-radius: 9999px;
+        border: 1px solid #fed7aa;
     }
 
-    .plan-exercise:hover:not(.active-plan) {
-        background: #f3f4f6;
-        border-color: #d1d5db;
-    }
-
-    .plan-exercise-info {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-    }
-
-    .exercise-number {
-        width: 2rem;
-        height: 2rem;
-        background: #e5e7eb;
+    .btn-remove-ex {
+        background: none;
+        border: none;
+        color: #d1d5db;
+        font-size: 0.875rem;
+        cursor: pointer;
+        padding: 0.25rem 0.5rem;
         border-radius: 0.375rem;
+        transition: all 0.15s;
+        flex-shrink: 0;
+    }
+
+        .btn-remove-ex:hover {
+            color: #ef4444;
+            background: #fef2f2;
+        }
+
+    /* ===== SETU GALVENE ===== */
+    .sets-header {
+        display: grid;
+        grid-template-columns: 2rem 1fr 4.5rem 4.5rem 4rem;
+        gap: 0.25rem;
+        padding: 0.4rem 1.25rem;
+        background: #f9fafb;
+        border-bottom: 1px solid #f3f4f6;
+    }
+
+        .sets-header span {
+            font-size: 0.65rem;
+            font-weight: 700;
+            color: #9ca3af;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            text-align: center;
+        }
+
+        .sets-header .col-prev {
+            text-align: left;
+        }
+
+    /* ===== SETU RINDA ===== */
+    .set-row {
+        display: grid;
+        grid-template-columns: 2rem 1fr 4.5rem 4.5rem 4rem;
+        gap: 0.25rem;
+        align-items: center;
+        padding: 0.45rem 1.25rem;
+        border-bottom: 1px solid #f9fafb;
+        transition: background 0.15s;
+    }
+
+        .set-row:last-of-type {
+            border-bottom: none;
+        }
+
+    .set-row-done {
+        background: #fff7ed;
+    }
+
+    .col-num {
+        text-align: center;
+    }
+
+    .col-prev {
+        text-align: left;
+    }
+
+    .col-kg {
+        text-align: center;
+    }
+
+    .col-reps {
+        text-align: center;
+    }
+
+    .col-action {
         display: flex;
         align-items: center;
         justify-content: center;
-        font-weight: 600;
+        gap: 0.2rem;
+    }
+
+    .set-num {
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #9ca3af;
+    }
+
+    .set-prev {
+        font-size: 0.72rem;
+        color: #9ca3af;
+    }
+
+    .set-input {
+        width: 100%;
+        text-align: center;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.375rem;
+        padding: 0.35rem 0.2rem;
+        font-size: 0.9rem;
         color: #111827;
-    }
-
-    .exercise-details {
-        flex: 1;
-    }
-
-    .plan-exercise-name {
         font-weight: 500;
-        color: #111827;
-        margin-bottom: 0.125rem;
+        background: white;
+        outline: none;
+        transition: border-color 0.15s, box-shadow 0.15s;
     }
 
-    .plan-exercise-muscle {
-        font-size: 0.875rem;
-        color: #6b7280;
-    }
+        .set-input:focus {
+            border-color: #ff8c42;
+            box-shadow: 0 0 0 2px rgba(255,140,66,0.15);
+        }
 
-    .plan-exercise-actions {
+        .set-input:disabled {
+            background: transparent;
+            border-color: transparent;
+            color: #374151;
+        }
+
+    /* Atzīmēšanas poga */
+    .btn-check {
+        width: 1.875rem;
+        height: 1.875rem;
+        border-radius: 0.375rem;
+        border: 2px solid #d1d5db;
+        background: white;
+        color: #9ca3af;
+        font-size: 0.8rem;
+        font-weight: 700;
+        cursor: pointer;
         display: flex;
         align-items: center;
-        gap: 1rem;
+        justify-content: center;
+        transition: all 0.15s;
+        flex-shrink: 0;
     }
 
-    .exercise-sets-reps {
-        font-weight: 600;
-        color: #111827;
+        .btn-check:hover {
+            border-color: #ff8c42;
+            color: #ff8c42;
+        }
+
+    .btn-check-done {
+        background: #ff8c42;
+        border-color: #ff8c42;
+        color: white;
     }
 
-    .exercise-progress {
-        padding: 0.25rem 0.5rem;
-        background: #dcfce7;
-        color: #166534;
-        border-radius: 9999px;
-        font-size: 0.75rem;
-        font-weight: 500;
-    }
+        .btn-check-done:hover {
+            background: #e65c00;
+            border-color: #e65c00;
+        }
 
-    .remove-exercise-btn {
-        width: 1.5rem;
-        height: 1.5rem;
-        background: transparent;
+    .btn-del-set {
+        background: none;
         border: none;
-        color: #9ca3af;
+        color: #e5e7eb;
+        font-size: 0.7rem;
         cursor: pointer;
-        transition: color 0.2s;
+        padding: 0.2rem 0.3rem;
+        border-radius: 0.25rem;
+        transition: color 0.15s;
+        flex-shrink: 0;
     }
 
-        .remove-exercise-btn:hover {
+        .btn-del-set:hover {
             color: #ef4444;
         }
 
-    /* Empty state */
-    .empty-state {
-        text-align: center;
-        padding: 3rem 1rem;
-    }
-
-    .empty-icon {
-        font-size: 3rem;
-        margin-bottom: 1rem;
-    }
-
-    .empty-title {
-        font-size: 1.125rem;
-        font-weight: 600;
-        color: #111827;
-        margin-bottom: 0.5rem;
-    }
-
-    .empty-description {
-        font-size: 0.875rem;
+    /* ===== PIEVIENOT SETU ===== */
+    .btn-add-set {
+        display: block;
+        width: 100%;
+        padding: 0.65rem;
+        background: #f9fafb;
+        border: none;
+        border-top: 1px solid #f3f4f6;
         color: #6b7280;
+        font-size: 0.875rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s;
+        text-align: center;
     }
 
-    /* Darbības pogas */
-    .action-buttons {
-        display: flex;
-        gap: 1rem;
-        margin-top: 1.5rem;
-    }
+        .btn-add-set:hover {
+            background: #fff7ed;
+            color: #e65c00;
+            font-weight: 600;
+        }
 
-    .action-btn {
-        flex: 1;
+    /* ===== PIEVIENOT VINGRINĀJUMU ===== */
+    .btn-add-exercise {
         display: flex;
         align-items: center;
         justify-content: center;
         gap: 0.5rem;
+        width: 100%;
         padding: 1rem;
-        border: none;
-        border-radius: 0.75rem;
+        background: white;
+        border: 2px dashed #fed7aa;
+        border-radius: 1rem;
+        color: #ff8c42;
+        font-size: 0.9rem;
         font-weight: 600;
         cursor: pointer;
         transition: all 0.2s;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
     }
 
-    .complete-workout-btn {
-        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-        color: white;
-    }
-
-        .complete-workout-btn:hover:not(.disabled-btn) {
-            background: linear-gradient(135deg, #059669 0%, #047857 100%);
+        .btn-add-exercise:hover {
+            background: #fff7ed;
+            border-color: #ff8c42;
             transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(255,140,66,0.15);
         }
 
-    .disabled-btn {
-        opacity: 0.5;
-        cursor: not-allowed;
-    }
-
-        .disabled-btn:hover {
-            transform: none !important;
-        }
-
-    .reset-workout-btn {
-        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-        color: white;
-    }
-
-        .reset-workout-btn:hover {
-            background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
-            transform: translateY(-1px);
-        }
-
-    .action-icon {
-        width: 1.25rem;
-        height: 1.25rem;
-    }
-
-    /* Statusa josla */
-    .status-bar {
+    /* ===== STATUSA JOSLA ===== */
+    .statusbar {
         position: fixed;
         bottom: 0;
         left: 0;
         right: 0;
         background: white;
-        border-top: 1px solid #e5e7eb;
-        padding: 0.75rem 0;
-        box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
-    }
-
-    .status-content {
-        max-width: 1400px;
-        margin: 0 auto;
-        padding: 0 1.5rem;
+        border-top: 3px solid #ff8c42;
+        padding: 0.65rem 1.5rem;
         display: flex;
         justify-content: space-between;
         align-items: center;
-    }
-
-    .status-info {
-        display: flex;
-        align-items: center;
         gap: 1rem;
-        font-size: 0.875rem;
-        color: #6b7280;
+        box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
     }
 
-    .status-indicator {
+    .status-item {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
-        color: #10b981;
+        gap: 0.35rem;
+        font-size: 0.8rem;
+        color: #6b7280;
         font-weight: 500;
     }
 
-    .status-dot {
-        width: 0.5rem;
-        height: 0.5rem;
-        background-color: #10b981;
-        border-radius: 50%;
-        animation: pulse 2s infinite;
-    }
-
-    @keyframes pulse {
-        0%, 100% {
-            opacity: 1;
-        }
-
-        50% {
-            opacity: 0.5;
-        }
-    }
-
-    .status-text {
-        color: #10b981;
-    }
-
-    .status-count {
-        padding: 0.25rem 0.5rem;
-        background: #f3f4f6;
-        border-radius: 0.25rem;
-    }
-
     .status-timer {
-        font-size: 1.125rem;
-        font-weight: bold;
         font-family: monospace;
+        font-size: 0.9rem;
+        font-weight: 700;
         color: #111827;
     }
 
-    /* Scrollbar stils */
-    .exercise-list::-webkit-scrollbar {
-        width: 6px;
+    /* ===== MEKLĒŠANAS OVERLAY ===== */
+    .overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 100;
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
     }
 
-    .exercise-list::-webkit-scrollbar-track {
-        background: #f1f1f1;
-        border-radius: 3px;
+    .search-panel {
+        background: white;
+        width: 100%;
+        max-width: 700px;
+        border-radius: 1.25rem 1.25rem 0 0;
+        max-height: 85vh;
+        display: flex;
+        flex-direction: column;
+        padding: 1.25rem 1.25rem 0;
     }
 
-    .exercise-list::-webkit-scrollbar-thumb {
-        background: #c1c1c1;
-        border-radius: 3px;
+    .search-panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
     }
 
-        .exercise-list::-webkit-scrollbar-thumb:hover {
-            background: #a1a1a1;
+    .search-panel-title {
+        font-size: 1.125rem;
+        font-weight: 700;
+        color: #111827;
+    }
+
+    .btn-close-search {
+        background: #f3f4f6;
+        border: none;
+        border-radius: 50%;
+        width: 2rem;
+        height: 2rem;
+        cursor: pointer;
+        font-size: 0.875rem;
+        color: #6b7280;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.15s;
+    }
+
+        .btn-close-search:hover {
+            background: #e5e7eb;
+            color: #111827;
         }
+
+    .search-input {
+        width: 100%;
+        padding: 0.7rem 1rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        font-size: 0.9rem;
+        outline: none;
+        margin-bottom: 0.75rem;
+        color: #111827;
+        transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+        .search-input:focus {
+            border-color: #ff8c42;
+            box-shadow: 0 0 0 3px rgba(255,140,66,0.1);
+        }
+
+    .filter-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .filter-chip {
+        padding: 0.3rem 0.75rem;
+        border: 1px solid #e5e7eb;
+        border-radius: 9999px;
+        background: #f9fafb;
+        color: #6b7280;
+        font-size: 0.75rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+
+        .filter-chip:hover:not(.filter-chip-active) {
+            background: #f3f4f6;
+            color: #374151;
+        }
+
+    .filter-chip-active {
+        background: #ff8c42;
+        border-color: #ff8c42;
+        color: white;
+    }
+
+    .search-results {
+        overflow-y: auto;
+        flex: 1;
+        padding-bottom: 1.25rem;
+    }
+
+    .search-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem 0.5rem;
+        border-bottom: 1px solid #f3f4f6;
+        cursor: pointer;
+        border-radius: 0.5rem;
+        transition: background 0.15s;
+    }
+
+        .search-item:hover {
+            background: #fff7ed;
+        }
+
+        .search-item:last-child {
+            border-bottom: none;
+        }
+
+    .search-item-left {
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+    }
+
+    .search-item-name {
+        font-weight: 600;
+        color: #111827;
+        font-size: 0.9rem;
+    }
+
+    .search-item-muscle {
+        font-size: 0.7rem;
+        color: #6b7280;
+    }
+
+    .search-item-add {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: white;
+        background: #ff8c42;
+        padding: 0.25rem 0.65rem;
+        border-radius: 0.375rem;
+        flex-shrink: 0;
+        transition: background 0.15s;
+    }
+
+    .search-item:hover .search-item-add {
+        background: #e65c00;
+    }
+
+    .search-empty {
+        text-align: center;
+        padding: 2.5rem 1rem;
+        color: #9ca3af;
+        font-size: 0.875rem;
+    }
+
+    .statusbar-finish-btn {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.5rem 1.25rem;
+        border: none;
+        border-radius: 0.5rem;
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        color: white;
+        font-size: 0.875rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        flex-shrink: 0;
+    }
+
+        .statusbar-finish-btn:hover {
+            background: linear-gradient(135deg, #059669 0%, #047857 100%);
+            transform: translateY(-1px);
+        }
+
+    /* ===== RESPONSĪVS DIZAINS ===== */
+
+
+    /* Mobilais */
+    @media (max-width: 480px) {
+        .page {
+            padding: 0 0.5rem 5rem;
+        }
+
+        .topbar {
+            padding: 0.65rem 0.75rem;
+        }
+
+        .topbar-left {
+            order: 1;
+            flex: 1 1 100%;
+        }
+
+        .topbar-center {
+            order: 3;
+            flex: 1 1 100%;
+            justify-content: center;
+        }
+
+        .topbar-right {
+            order: 2;
+            flex-shrink: 0;
+        }
+
+        .timer-wrap {
+            justify-content: center;
+            padding: 0.4rem 0.75rem;
+            border-radius: 0.5rem;
+        }
+
+        /* Apslēpj "Iepriekš" kolonnu — par maz vietas */
+        .col-prev {
+            display: none;
+        }
+
+        .sets-header {
+            grid-template-columns: 1.75rem 3.75rem 3.75rem 3.5rem;
+        }
+
+        .set-row {
+            grid-template-columns: 1.75rem 3.75rem 3.75rem 3.5rem;
+        }
+
+        .set-input {
+            font-size: 0.875rem;
+            padding: 0.3rem 0.1rem;
+        }
+
+        .btn-check {
+            width: 1.75rem;
+            height: 1.75rem;
+            font-size: 0.75rem;
+        }
+
+        .exercise-name {
+            font-size: 0.9rem;
+        }
+
+        .exercise-header {
+            padding: 0.75rem 0.875rem 0.6rem;
+        }
+
+        .btn-add-set {
+            font-size: 0.8rem;
+            padding: 0.55rem;
+        }
+
+        .btn-add-exercise {
+            font-size: 0.85rem;
+            padding: 0.875rem;
+        }
+
+        .exercises-list {
+            padding-top: 0.875rem;
+            gap: 0.75rem;
+        }
+
+        /* Statusbar mobilā versijā — 2 rindas */
+        .statusbar {
+            flex-wrap: wrap;
+            padding: 0.5rem 0.875rem;
+            gap: 0.4rem;
+        }
+
+        .statusbar-finish-btn {
+            flex: 1 1 100%;
+            justify-content: center;
+            padding: 0.6rem;
+            order: -1;
+            border-radius: 0.5rem;
+        }
+
+        .status-item {
+            font-size: 0.72rem;
+        }
+
+        .status-timer {
+            font-size: 0.8rem;
+        }
+
+        /* Meklēšanas panelis pilna platums mobilā */
+        .search-panel {
+            padding: 1rem 1rem 0;
+            border-radius: 1rem 1rem 0 0;
+        }
+
+        .search-panel-title {
+            font-size: 1rem;
+        }
+
+        .filter-chip {
+            font-size: 0.7rem;
+            padding: 0.25rem 0.6rem;
+        }
+
+        .search-item {
+            padding: 0.65rem 0.25rem;
+        }
+
+        .search-item-name {
+            font-size: 0.85rem;
+        }
+
+        .search-item-add {
+            font-size: 0.7rem;
+            padding: 0.2rem 0.5rem;
+        }
+    }
+
+    /* Ļoti mazs mobilais */
+    @media (max-width: 360px) {
+        .sets-header {
+            grid-template-columns: 1.5rem 3.5rem 3.5rem 3rem;
+            padding: 0.3rem 0.75rem;
+        }
+
+        .set-row {
+            grid-template-columns: 1.5rem 3.5rem 3.5rem 3rem;
+            padding: 0.35rem 0.75rem;
+        }
+
+        .btn-check {
+            width: 1.5rem;
+            height: 1.5rem;
+        }
+
+        .btn-del-set {
+            display: none;
+        }
+    }
 </style>

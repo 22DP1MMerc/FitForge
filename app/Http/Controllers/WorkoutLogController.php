@@ -2,349 +2,199 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\WorkoutSession;
-use App\Models\WorkoutSessionExercise;
 use App\Models\WorkoutLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use Inertia\Inertia;
 
 class WorkoutLogController extends Controller
 {
-   public function index(Request $request)
-{
-    $user = Auth::user();
-    
-    // Izmantojam WorkoutLog modeli, nevis WorkoutSession
-    $query = WorkoutLog::with(['routine', 'logExercises'])
-        ->where('user_id', $user->id)
-        ->orderBy('completed_at', 'desc');
-    
-    // Filtrēšana pēc meklēšanas
-    if ($request->has('search') && $request->search) {
-        $search = $request->search;
-        $query->where(function($q) use ($search) {
-            $q->where('name', 'like', "%{$search}%")
-              ->orWhere('notes', 'like', "%{$search}%")
-              ->orWhereHas('routine', function($q2) use ($search) {
-                  $q2->where('name', 'like', "%{$search}%");
-              });
-        });
-    }
-    
-    // Filtrēšana pēc mēneša
-    if ($request->has('month') && $request->month) {
-        $month = Carbon::parse($request->month . '-01');
-        $query->whereBetween('completed_at', [
-            $month->copy()->startOfMonth(),
-            $month->copy()->endOfMonth()
+    public function index(Request $request)
+    {
+        $user  = Auth::user();
+        $query = WorkoutLog::with(['routine', 'logExercises'])
+            ->where('user_id', $user->id)
+            ->orderBy('completed_at', 'desc');
+
+        // Meklēšana pēc nosaukuma
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('notes', 'like', "%{$search}%")
+                  ->orWhereHas('routine', fn($q2) => $q2->where('name', 'like', "%{$search}%"));
+            });
+        }
+
+        // Filtrēšana pēc mēneša
+        if ($request->filled('month')) {
+            $query->where('completed_at', 'like', $request->month . '%');
+        }
+
+        $workoutLogs = $query->paginate(15)->withQueryString();
+
+        $workoutLogs->transform(fn($log) => [
+            'id'               => $log->id,
+            'name'             => $log->name,
+            'completed_at'     => $log->completed_at?->toISOString(),
+            'duration_minutes' => $log->duration_minutes,
+            'notes'            => $log->notes,
+            'routine'          => $log->routine ? [
+                'id'   => $log->routine->id,
+                'name' => $log->routine->name,
+            ] : null,
+            'total_sets'   => $log->total_sets,
+            'total_reps'   => $log->total_reps,
+            'total_weight' => $log->total_weight,
+        ]);
+
+        $stats = [
+            'total_workouts'       => WorkoutLog::where('user_id', $user->id)->count(),
+            'total_duration'       => WorkoutLog::where('user_id', $user->id)->sum('duration_minutes'),
+            'this_month_workouts'  => WorkoutLog::where('user_id', $user->id)
+                ->whereMonth('completed_at', now()->month)
+                ->whereYear('completed_at', now()->year)
+                ->count(),
+        ];
+
+        $latvianMonths = [
+            'January' => 'janvāris', 'February' => 'februāris', 'March' => 'marts',
+            'April' => 'aprīlis',    'May' => 'maijs',           'June' => 'jūnijs',
+            'July' => 'jūlijs',      'August' => 'augusts',      'September' => 'septembris',
+            'October' => 'oktobris', 'November' => 'novembris',  'December' => 'decembris',
+        ];
+
+        $months = WorkoutLog::where('user_id', $user->id)
+            ->selectRaw('DISTINCT DATE_FORMAT(completed_at, "%Y-%m") as month')
+            ->whereNotNull('completed_at')
+            ->orderBy('month', 'desc')
+            ->get()
+            ->map(function ($item) use ($latvianMonths) {
+                $date = Carbon::parse($item->month . '-01');
+                return [
+                    'value' => $item->month,
+                    'label' => ($latvianMonths[$date->format('F')] ?? $date->format('F')) . ' ' . $date->format('Y'),
+                ];
+            });
+
+        return Inertia::render('WorkoutLogs/Index', [
+            'workoutLogs' => $workoutLogs,
+            'filters'     => ['search' => $request->search, 'month' => $request->month],
+            'stats'       => $stats,
+            'months'      => $months,
         ]);
     }
-    
-    $workoutLogs = $query->paginate(15)->withQueryString();
-    
-    // Pārveidojam datumus uz ISO string
-    $workoutLogs->transform(function ($log) {
-        return [
-            'id' => $log->id,
-            'name' => $log->name,
-            'completed_at' => $log->completed_at?->toISOString(),
-            'duration_minutes' => $log->duration_minutes,
-            'calories_burned' => $log->calories_burned,
-            'notes' => $log->notes,
-            'routine' => $log->routine ? [
-                'id' => $log->routine->id,
-                'name' => $log->routine->name
-            ] : null,
-            // Izmantojam modela computed properties
-            'total_sets' => $log->total_sets,
-            'total_reps' => $log->total_reps,
-            'total_weight' => $log->total_weight,
-        ];
-    });
-    
-    // Globālā statistika no WorkoutLog
-    $stats = [
-        'total_workouts' => WorkoutLog::where('user_id', $user->id)->count(),
-        'total_duration' => WorkoutLog::where('user_id', $user->id)->sum('duration_minutes'),
-        'total_calories' => WorkoutLog::where('user_id', $user->id)->sum('calories_burned'),
-        'this_month_workouts' => WorkoutLog::where('user_id', $user->id)
-            ->whereMonth('completed_at', now()->month)
-            ->whereYear('completed_at', now()->year)
-            ->count(),
-    ];
-    
-    // Mēnešu saraksts no WorkoutLog
-    $months = WorkoutLog::where('user_id', $user->id)
-        ->selectRaw('DATE_FORMAT(completed_at, "%Y-%m") as month')
-        ->whereNotNull('completed_at')
-        ->groupBy('month')
-        ->orderBy('month', 'desc')
-        ->get()
-        ->map(function($item) {
-            $date = Carbon::parse($item->month . '-01');
+
+    public function show($id)
+    {
+        $user = Auth::user();
+
+        $workoutLog = WorkoutLog::with(['routine', 'logExercises.exercise'])
+            ->where('user_id', $user->id)
+            ->findOrFail($id);
+
+        $workoutLog->log_exercises = $workoutLog->logExercises->map(function ($logExercise) {
+            $reps    = is_array($logExercise->reps_completed) ? $logExercise->reps_completed : [];
+            $weights = is_array($logExercise->weights_used)   ? $logExercise->weights_used   : [];
+
+            $setsData = [];
+            for ($i = 0; $i < min(count($reps), $logExercise->sets_completed); $i++) {
+                $setsData[] = [
+                    'reps'   => $reps[$i] ?? 0,
+                    'weight' => is_array($weights[$i]) ? ($weights[$i]['weight'] ?? 0) : ($weights[$i] ?? 0),
+                ];
+            }
+
             return [
-                'value' => $item->month,
-                'label' => $date->translatedFormat('F Y')
+                'id'             => $logExercise->id,
+                'exercise'       => $logExercise->exercise ? [
+                    'id'           => $logExercise->exercise->id,
+                    'name'         => $logExercise->exercise->name,
+                    'muscle_group' => $logExercise->exercise->muscle_group,
+                ] : null,
+                'sets_completed' => $logExercise->sets_completed,
+                'sets_planned'   => $logExercise->sets_planned,
+                'reps_planned'   => $logExercise->reps_planned,
+                'reps_completed' => $reps,
+                'weights_used'   => $weights,
+                'sets_data'      => $setsData,
+                'notes'          => $logExercise->notes,
             ];
         });
-    
-    return Inertia::render('WorkoutLogs/Index', [
-        'workoutLogs' => $workoutLogs,
-        'filters' => [
-            'search' => $request->search,
-            'month' => $request->month
-        ],
-        'stats' => $stats,
-        'months' => $months
-    ]);
-}
 
- public function show($id)
-{
-    $user = Auth::user();
-    
-    // Noņemam 'logExercises.sets' no with(), jo tā nav nepieciešama
-    $workoutLog = WorkoutLog::with([
-        'routine',
-        'logExercises.exercise'
-        // 'logExercises.sets' <-- noņemt
-    ])->where('user_id', $user->id)
-      ->findOrFail($id);
-    
-    // Pārveidojam datus, lai tie atbilstu Vue komponentam
-    $workoutLog->log_exercises = $workoutLog->logExercises->map(function($logExercise) {
-        // Konvertējam reps_completed un weights_used masīvus
-        $reps = is_array($logExercise->reps_completed) ? $logExercise->reps_completed : [];
-        $weights = is_array($logExercise->weights_used) ? $logExercise->weights_used : [];
-        
-        // Izveidojam setu datus
-        $setsData = [];
-        $setsCount = min(count($reps), $logExercise->sets_completed);
-        
-        for ($i = 0; $i < $setsCount; $i++) {
-            $setsData[] = [
-                'reps' => $reps[$i] ?? 0,
-                'weight' => isset($weights[$i]) 
-                    ? (is_array($weights[$i]) ? ($weights[$i]['weight'] ?? 0) : $weights[$i])
-                    : 0
-            ];
-        }
-        
-        return [
-            'id' => $logExercise->id,
-            'exercise' => $logExercise->exercise ? [
-                'id' => $logExercise->exercise->id,
-                'name' => $logExercise->exercise->name,
-                'muscle_group' => $logExercise->exercise->muscle_group
-            ] : null,
-            'sets_completed' => $logExercise->sets_completed,
-            'sets_planned' => $logExercise->sets_planned,
-            'reps_planned' => $logExercise->reps_planned,
-            'reps_completed' => $reps,
-            'weights_used' => $weights,
-            'sets_data' => $setsData, // Pievienojam apstrādātus setu datus
-            'notes' => $logExercise->notes
-        ];
-    });
-    
-    // Aprēķinam statistiku
-    $stats = $this->calculateWorkoutStats($workoutLog);
-    
-    // Atrodam līdzīgos treniņus
-    $similarWorkouts = WorkoutLog::where('user_id', $user->id)
-        ->where('id', '!=', $id)
-        ->whereDate('completed_at', '>=', Carbon::now()->subMonth())
-        ->orderBy('completed_at', 'desc')
-        ->limit(5)
-        ->get()
-        ->map(function($log) {
-            return [
-                'id' => $log->id,
-                'name' => $log->name,
-                'completed_at' => $log->completed_at?->toISOString(),
+        $stats = $this->calculateWorkoutStats($workoutLog);
+
+        $similarWorkouts = WorkoutLog::where('user_id', $user->id)
+            ->where('id', '!=', $id)
+            ->whereDate('completed_at', '>=', Carbon::now()->subMonth())
+            ->orderBy('completed_at', 'desc')
+            ->limit(5)
+            ->get()
+            ->map(fn($log) => [
+                'id'               => $log->id,
+                'name'             => $log->name,
+                'completed_at'     => $log->completed_at?->toISOString(),
                 'duration_minutes' => $log->duration_minutes,
-            ];
-        });
-    
-    return Inertia::render('WorkoutLogs/Show', [
-        'workoutLog' => [
-            'id' => $workoutLog->id,
-            'name' => $workoutLog->name,
-            'completed_at' => $workoutLog->completed_at?->toISOString(),
-            'duration_minutes' => $workoutLog->duration_minutes,
-            'calories_burned' => $workoutLog->calories_burned,
-            'notes' => $workoutLog->notes,
-            'routine' => $workoutLog->routine ? [
-                'id' => $workoutLog->routine->id,
-                'name' => $workoutLog->routine->name
-            ] : null,
-            'log_exercises' => $workoutLog->log_exercises // Izmantojam pārveidotos datus
-        ],
-        'stats' => $stats,
-        'similarWorkouts' => $similarWorkouts
-    ]);
-}
+            ]);
 
-    private function calculateWorkoutStats($workoutLog)
-{
-    $totalSets = 0;
-    $totalReps = 0;
-    $totalWeight = 0;
-    $muscleGroups = [];
-    
-    foreach ($workoutLog->log_exercises as $logExercise) {
-        $totalSets += $logExercise['sets_completed'];
-        
-        // Apstrādājam atkārtojumus
-        if (is_array($logExercise['reps_completed'])) {
-            foreach ($logExercise['reps_completed'] as $reps) {
-                if (is_numeric($reps)) {
-                    $totalReps += $reps;
-                }
+        return Inertia::render('WorkoutLogs/Show', [
+            'workoutLog' => [
+                'id'               => $workoutLog->id,
+                'name'             => $workoutLog->name,
+                'completed_at'     => $workoutLog->completed_at?->toISOString(),
+                'duration_minutes' => $workoutLog->duration_minutes,
+                'notes'            => $workoutLog->notes,
+                'routine'          => $workoutLog->routine ? [
+                    'id'   => $workoutLog->routine->id,
+                    'name' => $workoutLog->routine->name,
+                ] : null,
+                'log_exercises' => $workoutLog->log_exercises,
+            ],
+            'stats'          => $stats,
+            'similarWorkouts' => $similarWorkouts,
+        ]);
+    }
+
+    public function destroy($id)
+    {
+        $workoutLog = WorkoutLog::where('user_id', Auth::id())->findOrFail($id);
+        $workoutLog->delete();
+        return redirect()->route('workout-logs.index');
+    }
+
+    private function calculateWorkoutStats($workoutLog): array
+    {
+        $totalSets   = 0;
+        $totalReps   = 0;
+        $totalWeight = 0;
+        $muscleGroups = [];
+
+        foreach ($workoutLog->log_exercises as $ex) {
+            $totalSets += $ex['sets_completed'];
+
+            foreach ($ex['reps_completed'] as $reps) {
+                if (is_numeric($reps)) $totalReps += $reps;
+            }
+
+            foreach ($ex['weights_used'] as $weight) {
+                if (is_numeric($weight)) $totalWeight += $weight;
+                elseif (is_array($weight) && isset($weight['weight'])) $totalWeight += $weight['weight'];
+            }
+
+            if ($ex['exercise'] && $ex['exercise']['muscle_group']) {
+                $mg = $ex['exercise']['muscle_group'];
+                $muscleGroups[$mg] = ($muscleGroups[$mg] ?? 0) + $ex['sets_completed'];
             }
         }
-        
-        // Apstrādājam svarus
-        if (is_array($logExercise['weights_used'])) {
-            foreach ($logExercise['weights_used'] as $weight) {
-                if (is_numeric($weight)) {
-                    $totalWeight += $weight;
-                } elseif (is_array($weight) && isset($weight['weight'])) {
-                    $totalWeight += $weight['weight'];
-                }
-            }
-        }
-        
-        // Saskaitām muskuļu grupas
-        if ($logExercise['exercise'] && $logExercise['exercise']['muscle_group']) {
-            $muscleGroup = $logExercise['exercise']['muscle_group'];
-            $muscleGroups[$muscleGroup] = ($muscleGroups[$muscleGroup] ?? 0) + $logExercise['sets_completed'];
-        }
-    }
-    
-    // Aprēķinam vidējos rādītājus
-    $averageRepsPerSet = $totalSets > 0 ? round($totalReps / $totalSets, 1) : 0;
-    $averageWeightPerSet = $totalSets > 0 ? round($totalWeight / $totalSets, 1) : 0;
-    
-    return [
-        'total_sets' => $totalSets,
-        'total_reps' => $totalReps,
-        'total_weight' => round($totalWeight, 1),
-        'average_reps_per_set' => $averageRepsPerSet,
-        'average_weight_per_set' => $averageWeightPerSet,
-        'muscle_groups' => $muscleGroups,
-    ];
-}
 
-// Palīgfunkcija treniņa statistikas aprēķināšanai
-private function calculateSessionStats($session)
-{
-    $session->total_sets = 0;
-    $session->total_reps = 0;
-    $session->total_weight = 0;
-    
-    foreach ($session->exercises as $exercise) {
-        // Sets
-        $session->total_sets += $exercise->sets_completed;
-        
-        // Reps
-        $reps = $exercise->reps_completed ?? [];
-        if (is_array($reps)) {
-            foreach ($reps as $repCount) {
-                if (is_numeric($repCount)) {
-                    $session->total_reps += $repCount;
-                }
-            }
-        }
-        
-        // Weights
-        $weights = $exercise->weights_used ?? [];
-        if (is_array($weights)) {
-            foreach ($weights as $weightData) {
-                if (is_array($weightData) && isset($weightData['weight'])) {
-                    $session->total_weight += floatval($weightData['weight']);
-                } elseif (is_numeric($weightData)) {
-                    $session->total_weight += floatval($weightData);
-                }
-            }
-        }
+        return [
+            'total_sets'              => $totalSets,
+            'total_reps'              => $totalReps,
+            'total_weight'            => round($totalWeight, 1),
+            'average_reps_per_set'    => $totalSets > 0 ? round($totalReps / $totalSets, 1) : 0,
+            'average_weight_per_set'  => $totalSets > 0 ? round($totalWeight / $totalSets, 1) : 0,
+            'muscle_groups'           => $muscleGroups,
+        ];
     }
-    
-    $session->total_weight = round($session->total_weight, 2);
-    
-    // Ja nav duration_minutes, aprēķinam no starta un beigu laika
-    if (!$session->duration_minutes && $session->ended_at && $session->started_at) {
-        $session->duration_minutes = $session->started_at->diffInMinutes($session->ended_at);
-    }
-}
-
-// Aprēķina globālo statistiku - VISI treniņi
-private function calculateGlobalStats($userId)
-{
-    // 1. Kopējais treniņu skaits (VISI)
-    $totalWorkouts = WorkoutSession::where('user_id', $userId)->count();
-    
-    // 2. Kopējais laiks (izmantojam duration_minutes vai aprēķinam no laika)
-    $sessions = WorkoutSession::where('user_id', $userId)->get();
-    $totalDuration = 0;
-    $totalCalories = 0;
-    
-    foreach ($sessions as $session) {
-        if ($session->duration_minutes) {
-            $totalDuration += $session->duration_minutes;
-        } elseif ($session->ended_at && $session->started_at) {
-            $totalDuration += $session->started_at->diffInMinutes($session->ended_at);
-        }
-        
-        $totalCalories += $session->calories_burned ?? 0;
-    }
-    
-    // 3. Šī mēneša treniņi
-    $thisMonthWorkouts = WorkoutSession::where('user_id', $userId)
-        ->whereBetween('started_at', [
-            Carbon::now()->startOfMonth(),
-            Carbon::now()->endOfMonth()
-        ])->count();
-    
-    // 4. Kopējais setu, repu un svara daudzums
-    $exerciseStats = DB::table('workout_session_exercises as wse')
-        ->join('workout_sessions as ws', 'wse.workout_session_id', '=', 'ws.id')
-        ->where('ws.user_id', $userId)
-        ->selectRaw('
-            SUM(wse.sets_completed) as total_sets,
-            COUNT(DISTINCT ws.id) as workouts_with_exercises
-        ')
-        ->first();
-    
-    return [
-        'total_workouts' => $totalWorkouts,
-        'total_duration' => $totalDuration,
-        'total_calories' => $totalCalories,
-        'this_month_workouts' => $thisMonthWorkouts,
-        'total_sets' => $exerciseStats->total_sets ?? 0,
-        'workouts_with_exercises' => $exerciseStats->workouts_with_exercises ?? 0,
-    ];
-}
-
-// Iegūst pieejamos mēnešus (izmantojam started_at)
-private function getAvailableMonths($userId)
-{
-    $months = WorkoutSession::where('user_id', $userId)
-        ->selectRaw('DATE_FORMAT(started_at, "%Y-%m") as month')
-        ->groupBy('month')
-        ->orderBy('month', 'desc')
-        ->get()
-        ->map(function($item) {
-            $date = Carbon::parse($item->month . '-01');
-            return [
-                'value' => $item->month,
-                'label' => $date->translatedFormat('F Y')
-            ];
-        });
-    
-    return $months;
-}
 }
