@@ -145,7 +145,7 @@ class RoutineController extends Controller
             ->latest()
             ->get();
             
-        return Inertia::render('Routines/MyRoutines', [
+        return Inertia::render('Routines/Routineview', [
             'routines' => $routines
         ]);
     }
@@ -392,4 +392,20 @@ class RoutineController extends Controller
         
         return redirect()->route('routines.my')->with('success', 'Rutīna veiksmīgi atjaunināta!');
     }
+    public function destroy(Routine $routine)
+{
+    $user = auth()->user();
+    
+    // Admins var dzēst jebkuru, lietotājs — tikai savu
+    if (!$user->is_admin && $routine->user_id !== $user->id) {
+        abort(403);
+    }
+
+    if ($user->active_routine_id === $routine->id) {
+        $user->update(['active_routine_id' => null]);
+    }
+
+    $routine->delete();
+    return redirect()->route('routines.my')->with('success', 'Rutīna dzēsta!');
+}
 }

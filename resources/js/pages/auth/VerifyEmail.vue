@@ -1,7 +1,4 @@
 <script setup lang="ts">
-import TextLink from '@/components/TextLink.vue';
-import { Button } from '@/components/ui/button';
-import AuthLayout from '@/layouts/AuthLayout.vue';
 import { Head, useForm } from '@inertiajs/vue3';
 import { LoaderCircle, Mail, CheckCircle, LogOut } from 'lucide-vue-next';
 
@@ -9,6 +6,7 @@ defineProps<{
     status?: string;
 }>();
 
+// nosūta verifikācijas e-pastu vēlreiz
 const form = useForm({});
 
 const submit = () => {
@@ -17,224 +15,229 @@ const submit = () => {
 </script>
 
 <template>
-    <AuthLayout title="Verificēt e-pastu" description="Lūdzu, verificējiet savu e-pasta adresi, noklikšķinot uz saites, ko nosūtījām uz jūsu e-pastu.">
-        <Head title="E-pasta verifikācija" />
+    <Head title="E-pasta verifikācija" />
 
-        <div class="verification-container">
-            <!-- Success Message -->
-            <div v-if="status === 'verification-link-sent'" class="success-message">
-                <CheckCircle class="success-icon" />
-                <div class="success-content">
-                    <p class="success-title">Jauna verifikācijas saite ir nosūtīta!</p>
-                    <p class="success-text">Lūdzu, pārbaudiet savu e-pasta iesūtni un mapi "Spam".</p>
-                </div>
+    <div class="page">
+
+        <!-- veiksmīgas nosūtīšanas paziņojums -->
+        <div v-if="status === 'verification-link-sent'" class="success-bar">
+            <CheckCircle class="success-icon" />
+            <div>
+                <p class="success-title">Saite nosūtīta!</p>
+                <p class="success-sub">Pārbaudiet iesūtni un mapi "Spam".</p>
             </div>
-
-            <!-- Main Content -->
-            <div class="verification-card">
-                <!-- Icon -->
-                <div class="icon-wrapper">
-                    <div class="icon-circle">
-                        <Mail class="icon-mail" />
-                    </div>
-                </div>
-
-                <!-- Title - Centered -->
-                <h2 class="card-title">Pārbaudiet savu e-pastu</h2>
-
-                <!-- Description - Centered -->
-                <p class="card-description">
-                    Mēs nosūtījām verifikācijas saiti uz jūsu e-pasta adresi.
-                    <br>
-                    Lūdzu, noklikšķiniet uz saites e-pastā, lai aktivizētu savu kontu.
-                </p>
-
-                <!-- Tips -->
-                <div class="tips-box">
-                    <p class="tips-title">📧 Nesaņēmāt e-pastu?</p>
-                    <ul class="tips-list">
-                        <li>Pārbaudiet mapi "Spam" vai "Junk"</li>
-                        <li>Pārliecinieties, ka ievadījāt pareizu e-pasta adresi</li>
-                        <li>Pievienojiet mūs saviem kontaktiem, lai nākotnē nesaņemtu e-pastus spama mapē</li>
-                    </ul>
-                </div>
-
-                <!-- Buttons -->
-                <div class="button-group">
-                    <button @click="submit"
-                            :disabled="form.processing"
-                            class="btn-primary">
-                        <LoaderCircle v-if="form.processing" class="btn-spinner" />
-                        <Mail v-else class="btn-icon" />
-                        {{ form.processing ? 'Nosūta...' : 'Nosūtīt verifikācijas e-pastu vēlreiz' }}
-                    </button>
-
-                    <TextLink :href="route('logout')"
-                              method="post"
-                              as="button"
-                              class="btn-logout">
-                        <LogOut class="btn-icon-small" />
-                        Izrakstīties
-                    </TextLink>
-                </div>
-            </div>
-
-            <!-- Help Text -->
-            <p class="help-text">
-                Ja jums joprojām ir problēmas, lūdzu, sazinieties ar atbalsta dienestu
-            </p>
         </div>
-    </AuthLayout>
+
+        <!-- galvenā karte -->
+        <div class="verify-card">
+
+            <!-- e-pasta ikona -->
+            <div class="icon-circle">
+                <Mail class="icon-mail" />
+            </div>
+
+            <h2 class="card-title">Pārbaudiet savu e-pastu</h2>
+
+            <p class="card-desc">
+                Mēs nosūtījām verifikācijas saiti uz jūsu e-pasta adresi.<br />
+                Noklikšķiniet uz saites, lai aktivizētu kontu.
+            </p>
+
+            <!-- padomi ja e-pasts netika saņemts -->
+            <div class="tips-box">
+                <p class="tips-title">📧 Nesaņēmāt e-pastu?</p>
+                <ul class="tips-list">
+                    <li>Pārbaudiet mapi "Spam" vai "Junk"</li>
+                    <li>Pārliecinieties, ka ievadījāt pareizu adresi</li>
+                    <li>Pievienojiet mūs kontaktiem, lai izvairītos no spama</li>
+                </ul>
+            </div>
+
+            <div class="btn-group">
+                <!-- nosūtīt vēlreiz -->
+                <button @click="submit"
+                        :disabled="form.processing"
+                        class="btn-primary">
+                    <LoaderCircle v-if="form.processing" class="spin-icon" />
+                    <Mail v-else class="btn-icon" />
+                    {{ form.processing ? 'Nosūta...' : 'Nosūtīt vēlreiz' }}
+                </button>
+
+                <!-- izrakstīties — natīvā forma ar Laravel CSRF tokenu no meta taga -->
+                <!-- vienkārša saite — GET pieprasījums, nav CSRF problēmu -->
+                <a :href="route('logout.get')" class="btn-logout">
+                    <LogOut class="btn-icon" />
+                    Izrakstīties
+                </a>
+            </div>
+        </div>
+
+        <p class="help-text">Problēmu gadījumā sazinieties ar atbalsta dienestu.</p>
+    </div>
 </template>
 
 <style scoped>
-    /* Container */
-    .verification-container {
-        max-width: 28rem;
-        margin: 0 auto;
+    @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap');
+
+    .page {
+        min-height: 100vh;
+        background: #f5f5f5;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem 1.25rem;
     }
 
-    /* Success Message */
-    .success-message {
-        margin-bottom: 1.5rem;
-        padding: 1rem;
-        background-color: #f0fdf4;
-        border: 1px solid #bbf7d0;
-        border-radius: 0.5rem;
+    .success-bar {
         display: flex;
         align-items: flex-start;
         gap: 0.75rem;
-        animation: fadeIn 0.3s ease-out;
+        width: 100%;
+        max-width: 480px;
+        background: #f0fdf4;
+        border: 1px solid #bbf7d0;
+        border-radius: 9px;
+        padding: 0.85rem 1rem;
+        margin-bottom: 1.25rem;
+        animation: fadeDown 0.3s ease;
     }
 
     .success-icon {
-        width: 1.25rem;
-        height: 1.25rem;
+        width: 18px;
+        height: 18px;
         color: #16a34a;
         flex-shrink: 0;
-        margin-top: 0.125rem;
-    }
-
-    .success-content {
-        flex: 1;
+        margin-top: 2px;
     }
 
     .success-title {
-        font-weight: 500;
-        color: #166534;
-        margin-bottom: 0.25rem;
-    }
-
-    .success-text {
+        font-family: 'DM Sans', sans-serif;
         font-size: 0.875rem;
+        font-weight: 600;
+        color: #166534;
+        margin: 0 0 0.15rem;
+    }
+
+    .success-sub {
+        font-family: 'DM Sans', sans-serif;
+        font-size: 0.8rem;
         color: #15803d;
+        margin: 0;
     }
 
-    /* Verification Card */
-    .verification-card {
-        background-color: #ffffff;
-        border-radius: 1rem;
-        border: 1px solid #f3f4f6;
-        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-        padding: 2rem;
-    }
-
-    /* Icon */
-    .icon-wrapper {
+    .verify-card {
+        width: 100%;
+        max-width: 480px;
+        background: #ffffff;
+        border: 1px solid #ebebeb;
+        border-radius: 14px;
+        padding: 2.5rem 2rem;
         display: flex;
-        justify-content: center;
-        margin-bottom: 1.5rem;
+        flex-direction: column;
+        align-items: center;
+        gap: 1.25rem;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.06);
     }
 
     .icon-circle {
-        width: 4rem;
-        height: 4rem;
-        background-color: #fff7ed;
-        border-radius: 9999px;
+        width: 64px;
+        height: 64px;
+        background: #fff7ed;
+        border: 1px solid rgba(255, 107, 0, 0.2);
+        border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
     }
 
     .icon-mail {
-        width: 2rem;
-        height: 2rem;
-        color: #ea580c;
+        width: 28px;
+        height: 28px;
+        color: #ff6b00;
     }
 
-    /* Card Text - All Centered */
     .card-title {
-        font-size: 1.5rem;
-        font-weight: 600;
+        font-family: 'Barlow Condensed', sans-serif;
+        font-size: 2rem;
+        font-weight: 800;
+        color: #111;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin: 0;
         text-align: center;
-        color: #111827;
-        margin-bottom: 0.75rem;
     }
 
-    .card-description {
+    .card-desc {
+        font-family: 'DM Sans', sans-serif;
+        font-size: 0.9rem;
+        color: #777;
         text-align: center;
-        color: #4b5563;
-        margin-bottom: 1.5rem;
-        line-height: 1.5;
-    }
-
-    /* Tips Box - Left aligned (keeps readability) */
-    .tips-box {
-        background-color: #f9fafb;
-        border-radius: 0.5rem;
-        padding: 1rem;
-        margin-bottom: 1.5rem;
-        text-align: left;
-    }
-
-    .tips-title {
-        font-size: 0.875rem;
-        font-weight: 500;
-        color: #374151;
-        margin-bottom: 0.5rem;
-        text-align: left;
-    }
-
-    .tips-list {
-        font-size: 0.875rem;
-        color: #4b5563;
-        list-style: none;
-        padding-left: 0;
+        line-height: 1.6;
         margin: 0;
     }
 
+    .tips-box {
+        width: 100%;
+        background: #f9f9f9;
+        border: 1px solid #ebebeb;
+        border-radius: 9px;
+        padding: 1rem 1.1rem;
+    }
+
+    .tips-title {
+        font-family: 'DM Sans', sans-serif;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #555;
+        margin: 0 0 0.6rem;
+    }
+
+    .tips-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+    }
+
         .tips-list li {
-            margin-bottom: 0.25rem;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.8rem;
+            color: #888;
             padding-left: 1rem;
             position: relative;
-            text-align: left;
         }
 
             .tips-list li::before {
-                content: "•";
+                content: '•';
                 position: absolute;
                 left: 0;
-                color: #ea580c;
+                color: #ff6b00;
             }
 
-    /* Button Group */
-    .button-group {
+    .btn-group {
+        width: 100%;
         display: flex;
         flex-direction: column;
-        gap: 0.75rem;
+        gap: 0.65rem;
     }
 
-    /* Primary Button */
     .btn-primary {
         width: 100%;
-        background-color: #ea580c;
-        color: #ffffff;
-        font-weight: 500;
-        padding: 0.625rem 1rem;
-        border-radius: 0.5rem;
+        padding: 0.95rem 1rem;
+        background: #ff6b00;
+        color: #fff;
         border: none;
+        border-radius: 9px;
+        font-family: 'Barlow Condensed', sans-serif;
+        font-size: 1.1rem;
+        font-weight: 700;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
         cursor: pointer;
-        transition: all 0.2s ease;
+        transition: background 0.2s, transform 0.1s;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -242,9 +245,8 @@ const submit = () => {
     }
 
         .btn-primary:hover:not(:disabled) {
-            background-color: #c2410c;
+            background: #e65c00;
             transform: translateY(-1px);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         }
 
         .btn-primary:active:not(:disabled) {
@@ -252,62 +254,66 @@ const submit = () => {
         }
 
         .btn-primary:disabled {
-            opacity: 0.6;
+            background: #e5e5e5;
+            color: #aaa;
             cursor: not-allowed;
         }
 
-    .btn-spinner {
-        width: 1rem;
-        height: 1rem;
-        animation: spin 1s linear infinite;
+    /* logout forma bez vizuālā stila */
+    .logout-form {
+        width: 100%;
+        margin: 0;
+        padding: 0;
     }
 
-    .btn-icon {
-        width: 1rem;
-        height: 1rem;
-    }
-
-    /* Logout Button */
     .btn-logout {
         width: 100%;
-        background-color: transparent;
-        color: #4b5563;
+        padding: 0.75rem 1rem;
+        background: transparent;
+        color: #888;
+        border: 1.5px solid #e5e5e5;
+        border-radius: 9px;
+        font-family: 'DM Sans', sans-serif;
         font-size: 0.875rem;
         font-weight: 500;
-        padding: 0.5rem 1rem;
-        border-radius: 0.5rem;
-        border: none;
         cursor: pointer;
-        transition: all 0.2s ease;
+        transition: color 0.2s, border-color 0.2s, background 0.2s;
         display: flex;
         align-items: center;
         justify-content: center;
         gap: 0.5rem;
+        box-sizing: border-box;
     }
 
         .btn-logout:hover {
-            color: #111827;
-            background-color: #f9fafb;
+            color: #333;
+            border-color: #ccc;
+            background: #f5f5f5;
         }
 
-    .btn-icon-small {
-        width: 1rem;
-        height: 1rem;
+    .btn-icon {
+        width: 16px;
+        height: 16px;
     }
 
-    /* Help Text */
+    .spin-icon {
+        width: 16px;
+        height: 16px;
+        animation: spin 1s linear infinite;
+    }
+
     .help-text {
-        text-align: center;
+        font-family: 'DM Sans', sans-serif;
         font-size: 0.75rem;
-        color: #6b7280;
-        margin-top: 1.5rem;
+        color: #bbb;
+        text-align: center;
+        margin-top: 1.25rem;
     }
 
-    /* Animations */
-    @keyframes fadeIn {
+    @keyframes fadeDown {
         from {
             opacity: 0;
-            transform: translateY(-10px);
+            transform: translateY(-8px);
         }
 
         to {
@@ -326,28 +332,13 @@ const submit = () => {
         }
     }
 
-    /* Responsive Design */
-    @media (max-width: 640px) {
-        .verification-card {
-            padding: 1.5rem;
+    @media (max-width: 480px) {
+        .verify-card {
+            padding: 1.75rem 1.25rem;
         }
 
         .card-title {
-            font-size: 1.25rem;
-        }
-
-        .card-description {
-            font-size: 0.875rem;
-        }
-
-        .tips-title {
-            font-size: 0.8125rem;
-        }
-
-        .tips-list li {
-            font-size: 0.8125rem;
+            font-size: 1.6rem;
         }
     }
-
-    
 </style>

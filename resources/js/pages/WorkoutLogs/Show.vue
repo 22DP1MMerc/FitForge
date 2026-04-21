@@ -19,19 +19,49 @@ const formatTime = (d: string) => new Date(d).toLocaleTimeString('lv-LV', {
     hour: '2-digit', minute: '2-digit'
 });
 
-const getSetsData = (logExercise: any) => {
+// Sekundes uz lasāmu formātu
+const formatDuration = (seconds: number) => {
+    if (!seconds) return '—';
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    if (m > 0) return s > 0 ? `${m}min ${s}s` : `${m}min`;
+    return `${s}s`;
+};
+
+// Izmanto is_cardio karogu ko nosūta kontrolieris
+const isCardio = (logExercise: any) => {
+    return logExercise.is_cardio === true;
+};
+
+// Strength setu masīvs
+const getStrengthSets = (logExercise: any) => {
     const reps    = logExercise.reps_completed || [];
     const weights = logExercise.weights_used   || [];
     return Array.from({ length: logExercise.sets_completed }, (_, i) => ({
-        reps:   reps[i] || 0,
+        reps:   reps[i]    || 0,
         weight: Array.isArray(weights[i]) ? (weights[i]?.weight || 0) : (weights[i] || 0)
     }));
 };
 
+// Kardio setu masīvs — laiki sekundēs
+const getCardioSets = (logExercise: any) => {
+    const durations = logExercise.durations_completed || [];
+    return Array.from({ length: logExercise.sets_completed }, (_, i) => ({
+        duration_seconds: durations[i] || 0
+    }));
+};
+
+// Muskuļu grupas joslas platums procentos
 const muscleGroupPercent = (count: number) => {
     const total = Object.values(props.stats.muscle_groups).reduce((s: number, v: any) => s + v, 0);
     return total > 0 ? Math.round((count / total) * 100) : 0;
 };
+
+// Vai vispār ir kāds strength vingrinājums
+const hasStrength = props.workoutLog?.log_exercises?.some((ex: any) => !ex.is_cardio);
+
+// Vai vispār ir kāds kardio vingrinājums
+const hasCardio = props.workoutLog?.log_exercises?.some((ex: any) => ex.is_cardio);
 
 const deleteWorkout = () => {
     router.delete(route('workout-logs.destroy', props.workoutLog.id));
@@ -43,12 +73,10 @@ const deleteWorkout = () => {
     <AppLayout>
         <div class="page">
 
-            <!-- Galvene -->
+            <!-- Galvene ar atpakaļ pogu -->
             <div class="topbar">
                 <div class="topbar-left">
-                    <Link :href="route('workout-logs.index')" class="back-link">
-                    ← Atpakaļ
-                    </Link>
+                    <Link :href="route('workout-logs.index')" class="back-link">← Atpakaļ</Link>
                     <div>
                         <h1 class="topbar-title">{{ workoutLog.name }}</h1>
                         <div class="topbar-meta">
@@ -61,15 +89,15 @@ const deleteWorkout = () => {
                 <button @click="showDeleteModal = true" class="btn-delete">🗑️ Dzēst</button>
             </div>
 
-            <!-- Ātrie statistikas lodziņi -->
-            <div class="quick-stats">
+            <!-- Ātrie statistikas lodziņi — strength -->
+            <div v-if="hasStrength" class="quick-stats">
                 <div class="qstat">
                     <div class="qstat-val">{{ stats.total_sets }}</div>
                     <div class="qstat-lbl">Kopējie seti</div>
                 </div>
                 <div class="qstat">
                     <div class="qstat-val">{{ stats.total_reps }}</div>
-                    <div class="qstat-lbl">Kopējie atkārtojumi</div>
+                    <div class="qstat-lbl">Atkārtojumi</div>
                 </div>
                 <div class="qstat">
                     <div class="qstat-val">{{ stats.total_weight }} kg</div>
@@ -81,10 +109,21 @@ const deleteWorkout = () => {
                 </div>
             </div>
 
-            <!-- Saturs -->
+            <!-- Kardio statistika — rāda tikai ja ir kardio -->
+            <div v-if="hasCardio" class="cardio-stats">
+                <div class="cardio-stat">
+                    <div class="cardio-val">{{ stats.total_sets }}</div>
+                    <div class="cardio-lbl">Kopējie seti</div>
+                </div>
+                <div class="cardio-stat">
+                    <div class="cardio-val">{{ stats.total_cardio_formatted || '—' }}</div>
+                    <div class="cardio-lbl">Kopējais kardio laiks</div>
+                </div>
+            </div>
+
+            <!-- Saturs: vingrinājumi + sānjosla -->
             <div class="content">
 
-                <!-- Vingrinājumi -->
                 <div class="exercises-col">
                     <div class="section-card">
                         <div class="section-header">
@@ -93,15 +132,17 @@ const deleteWorkout = () => {
                         </div>
 
                         <div class="exercise-list">
-                            <div v-for="ex in workoutLog.log_exercises" :key="ex.id" class="exercise-card">
+                            <div v-for="ex in workoutLog.log_exercises" :key="ex.id" class="exercise-card"
+                                 :class="{ 'exercise-card-cardio': isCardio(ex) }">
+
                                 <div class="ex-header">
-                                    <div>
+                                    <div class="ex-header-info">
                                         <div class="ex-name">{{ ex.exercise?.name }}</div>
                                         <div class="ex-meta">
                                             <span v-if="ex.exercise?.muscle_group" class="muscle-badge">
                                                 {{ ex.exercise.muscle_group }}
                                             </span>
-                                            <span class="ex-planned">Plānots: {{ ex.sets_planned }}×{{ ex.reps_planned }}</span>
+                                            <span v-if="isCardio(ex)" class="cardio-badge">Kardio</span>
                                         </div>
                                     </div>
                                     <div class="ex-done">
@@ -110,14 +151,29 @@ const deleteWorkout = () => {
                                     </div>
                                 </div>
 
-                                <!-- Setu rezultāti -->
-                                <div class="sets-grid">
-                                    <div v-for="(set, i) in getSetsData(ex)" :key="i" class="set-box">
-                                        <div class="set-num">Set {{ i + 1 }}</div>
-                                        <div class="set-reps">{{ set.reps }}×</div>
-                                        <div class="set-weight">{{ set.weight }} kg</div>
+                                <!-- Strength seti -->
+                                <template v-if="!isCardio(ex)">
+                                    <div class="sets-grid">
+                                        <div v-for="(set, i) in getStrengthSets(ex)" :key="i" class="set-box">
+                                            <div class="set-num-lbl">Set {{ i + 1 }}</div>
+                                            <div class="set-reps">{{ set.reps }}×</div>
+                                            <div class="set-weight">{{ set.weight }} kg</div>
+                                        </div>
+                                        <div v-if="getStrengthSets(ex).length === 0" class="no-data">Nav datu</div>
                                     </div>
-                                </div>
+                                </template>
+
+                                <!-- Kardio seti ar laiku -->
+                                <template v-else>
+                                    <div class="sets-grid-cardio">
+                                        <div v-for="(set, i) in getCardioSets(ex)" :key="i" class="set-box-cardio">
+                                            <div class="set-num-lbl">Set {{ i + 1 }}</div>
+                                            <div class="set-duration">{{ formatDuration(set.duration_seconds) }}</div>
+                                            <div class="set-duration-lbl">laiks</div>
+                                        </div>
+                                        <div v-if="getCardioSets(ex).length === 0" class="no-data">Nav datu</div>
+                                    </div>
+                                </template>
 
                                 <div v-if="ex.notes" class="ex-notes">
                                     <span class="notes-label">Piezīmes:</span> {{ ex.notes }}
@@ -130,7 +186,6 @@ const deleteWorkout = () => {
                 <!-- Sānjosla -->
                 <div class="sidebar">
 
-                    <!-- Muskuļu grupas -->
                     <div class="sidebar-card">
                         <h3 class="sidebar-title">Muskuļu grupas</h3>
                         <div class="muscle-list">
@@ -146,26 +201,34 @@ const deleteWorkout = () => {
                         </div>
                     </div>
 
-                    <!-- Papildu info -->
                     <div class="sidebar-card">
                         <h3 class="sidebar-title">Papildu informācija</h3>
                         <div class="info-list">
-                            <div class="info-row">
-                                <span class="info-lbl">Vid. atkārtojumi/setā</span>
-                                <span class="info-val">{{ stats.average_reps_per_set }}</span>
-                            </div>
-                            <div class="info-row">
-                                <span class="info-lbl">Kopējais svars</span>
-                                <span class="info-val">{{ stats.total_weight }} kg</span>
-                            </div>
-                            <div class="info-row">
-                                <span class="info-lbl">Vid. svars/setā</span>
-                                <span class="info-val">{{ stats.average_weight_per_set }} kg</span>
-                            </div>
+                            <!-- Strength papildus info -->
+                            <template v-if="hasStrength">
+                                <div class="info-row">
+                                    <span class="info-lbl">Vid. atkārtojumi/setā</span>
+                                    <span class="info-val">{{ stats.average_reps_per_set }}</span>
+                                </div>
+                                <div class="info-row">
+                                    <span class="info-lbl">Kopējais svars</span>
+                                    <span class="info-val">{{ stats.total_weight }} kg</span>
+                                </div>
+                                <div class="info-row">
+                                    <span class="info-lbl">Vid. svars/setā</span>
+                                    <span class="info-val">{{ stats.average_weight_per_set }} kg</span>
+                                </div>
+                            </template>
+                            <!-- Kardio papildus info -->
+                            <template v-if="hasCardio">
+                                <div class="info-row">
+                                    <span class="info-lbl">Kopējais kardio laiks</span>
+                                    <span class="info-val cardio-accent">{{ stats.total_cardio_formatted || '—' }}</span>
+                                </div>
+                            </template>
                         </div>
                     </div>
 
-                    <!-- Līdzīgi treniņi -->
                     <div v-if="similarWorkouts.length > 0" class="sidebar-card">
                         <h3 class="sidebar-title">Līdzīgi treniņi</h3>
                         <div class="similar-list">
@@ -178,12 +241,11 @@ const deleteWorkout = () => {
                             </div>
                         </div>
                     </div>
-
                 </div>
             </div>
         </div>
 
-        <!-- Dzēšanas modāls -->
+        <!-- Dzēšanas apstiprinājums -->
         <Teleport to="body">
             <div v-if="showDeleteModal" class="modal-overlay" @click.self="showDeleteModal = false">
                 <div class="modal">
@@ -217,7 +279,6 @@ const deleteWorkout = () => {
         background: #f3f4f6;
     }
 
-    /* Galvene */
     .topbar {
         display: flex;
         align-items: flex-start;
@@ -226,7 +287,7 @@ const deleteWorkout = () => {
         padding: 1.25rem 1.5rem;
         margin: 0 -1rem 1.5rem;
         background: linear-gradient(135deg, #ff8c42 0%, #e65c00 100%);
-        box-shadow: 0 2px 12px rgba(230, 92, 0, 0.3);
+        box-shadow: 0 2px 12px rgba(230,92,0,0.3);
     }
 
     .topbar-left {
@@ -284,15 +345,14 @@ const deleteWorkout = () => {
 
         .btn-delete:hover {
             background: rgba(239,68,68,0.6);
-            border-color: rgba(239,68,68,0.5);
         }
 
-    /* Ātrie statistikas lodziņi */
+    /* Strength statistikas josla */
     .quick-stats {
         display: grid;
         grid-template-columns: repeat(4, 1fr);
         gap: 1rem;
-        margin-bottom: 1.25rem;
+        margin-bottom: 1rem;
     }
 
     .qstat {
@@ -318,16 +378,48 @@ const deleteWorkout = () => {
         font-weight: 500;
     }
 
-    /* Saturs */
+    /* Kardio statistikas josla — zaļā tēma */
+    .cardio-stats {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+        margin-bottom: 1.25rem;
+    }
+
+    .cardio-stat {
+        background: white;
+        border-radius: 0.875rem;
+        padding: 1.1rem 1rem;
+        border: 1px solid #a7f3d0;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        text-align: center;
+        background: linear-gradient(135deg, #f0fdf4, white);
+    }
+
+    .cardio-val {
+        font-size: 1.625rem;
+        font-weight: 700;
+        color: #059669;
+        margin-bottom: 0.25rem;
+        line-height: 1;
+    }
+
+    .cardio-lbl {
+        font-size: 0.75rem;
+        color: #6b7280;
+        font-weight: 500;
+    }
+
+    .cardio-accent {
+        color: #059669;
+        font-weight: 700;
+    }
+
     .content {
         display: grid;
         grid-template-columns: 2fr 1fr;
         gap: 1.25rem;
         align-items: start;
-    }
-
-    /* Vingrinājumi */
-    .exercises-col {
     }
 
     .section-card {
@@ -375,11 +467,21 @@ const deleteWorkout = () => {
             border-bottom: none;
         }
 
+    /* Kardio kartiņa ar zaļu akcentu */
+    .exercise-card-cardio {
+        background: linear-gradient(to right, #f0fdf4, white);
+        border-left: 3px solid #a7f3d0;
+    }
+
     .ex-header {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
         margin-bottom: 0.875rem;
+    }
+
+    .ex-header-info {
+        flex: 1;
     }
 
     .ex-name {
@@ -406,9 +508,14 @@ const deleteWorkout = () => {
         border: 1px solid #fed7aa;
     }
 
-    .ex-planned {
-        font-size: 0.75rem;
-        color: #9ca3af;
+    .cardio-badge {
+        font-size: 0.7rem;
+        font-weight: 600;
+        color: #059669;
+        background: #d1fae5;
+        padding: 0.1rem 0.45rem;
+        border-radius: 9999px;
+        border: 1px solid #a7f3d0;
     }
 
     .ex-done {
@@ -428,7 +535,6 @@ const deleteWorkout = () => {
         color: #9ca3af;
     }
 
-    /* Setu grid */
     .sets-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
@@ -443,7 +549,7 @@ const deleteWorkout = () => {
         text-align: center;
     }
 
-    .set-num {
+    .set-num-lbl {
         font-size: 0.65rem;
         color: #9ca3af;
         margin-bottom: 0.25rem;
@@ -460,6 +566,41 @@ const deleteWorkout = () => {
         font-size: 0.75rem;
         color: #6b7280;
         margin-top: 0.15rem;
+    }
+
+    .sets-grid-cardio {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+        gap: 0.5rem;
+    }
+
+    .set-box-cardio {
+        background: #f0fdf4;
+        border: 1px solid #a7f3d0;
+        border-radius: 0.5rem;
+        padding: 0.5rem;
+        text-align: center;
+    }
+
+    .set-duration {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #059669;
+        line-height: 1;
+        margin-top: 0.15rem;
+    }
+
+    .set-duration-lbl {
+        font-size: 0.65rem;
+        color: #6b7280;
+        margin-top: 0.15rem;
+    }
+
+    .no-data {
+        font-size: 0.8rem;
+        color: #9ca3af;
+        font-style: italic;
+        padding: 0.5rem;
     }
 
     .ex-notes {
@@ -479,7 +620,6 @@ const deleteWorkout = () => {
         margin-right: 0.25rem;
     }
 
-    /* Sānjosla */
     .sidebar {
         display: flex;
         flex-direction: column;
@@ -503,7 +643,6 @@ const deleteWorkout = () => {
         border-bottom: 2px solid #f3f4f6;
     }
 
-    /* Muskuļu grupas */
     .muscle-list {
         display: flex;
         flex-direction: column;
@@ -548,7 +687,6 @@ const deleteWorkout = () => {
         text-align: right;
     }
 
-    /* Papildu info */
     .info-list {
         display: flex;
         flex-direction: column;
@@ -576,7 +714,6 @@ const deleteWorkout = () => {
         color: #111827;
     }
 
-    /* Līdzīgi treniņi */
     .similar-list {
         display: flex;
         flex-direction: column;
@@ -622,7 +759,6 @@ const deleteWorkout = () => {
             color: #e65c00;
         }
 
-    /* Modāls */
     .modal-overlay {
         position: fixed;
         inset: 0;
@@ -714,7 +850,7 @@ const deleteWorkout = () => {
             background: #dc2626;
         }
 
-    /* Mobilais */
+    /* Mobilais skats */
     @media (max-width: 480px) {
         .topbar {
             padding: 1rem;
@@ -730,7 +866,11 @@ const deleteWorkout = () => {
             gap: 0.625rem;
         }
 
-        .qstat-val {
+        .cardio-stats {
+            grid-template-columns: 1fr;
+        }
+
+        .qstat-val, .cardio-val {
             font-size: 1.375rem;
         }
 
@@ -738,7 +878,7 @@ const deleteWorkout = () => {
             grid-template-columns: 1fr;
         }
 
-        .sets-grid {
+        .sets-grid, .sets-grid-cardio {
             grid-template-columns: repeat(auto-fill, minmax(75px, 1fr));
         }
 

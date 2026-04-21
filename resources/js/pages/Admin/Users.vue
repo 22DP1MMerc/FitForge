@@ -1,21 +1,10 @@
-<!-- resources/js/Pages/Admin/Users.vue -->
 <script setup lang="ts">
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ref } from 'vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-    Users,
-    User,
-    Mail,
-    Shield,
-    ShieldAlert,
-    Trash2,
-    CheckCircle,
-    Search,
-    Calendar
-} from 'lucide-vue-next';
+import { Users, User, Mail, Shield, ShieldAlert, Trash2, CheckCircle, Search, Calendar } from 'lucide-vue-next';
 import AppLayout from '@/layouts/AppLayout.vue';
 
 interface User {
@@ -37,11 +26,7 @@ interface Props {
         last_page: number;
         per_page: number;
         total: number;
-        links: Array<{
-            url: string | null;
-            label: string;
-            active: boolean;
-        }>;
+        links: Array<{ url: string | null; label: string; active: boolean }>;
     };
     stats: {
         total_users: number;
@@ -52,77 +37,58 @@ interface Props {
 
 const props = defineProps<Props>();
 
-const searchQuery = ref('');
+const searchQuery      = ref('');
 const processingUserId = ref<number | null>(null);
 
-// Meklēšanas funkcionalitāte
+// Sūta meklēšanas pieprasījumu
 const searchUsers = () => {
     router.get(route('admin.users'), { search: searchQuery.value }, {
-        preserveState: true,
+        preserveState:  true,
         preserveScroll: true,
     });
 };
 
-// Meklēšanas aizkave
+// Aizkavēta meklēšana — negaida katru burtu
 let searchTimeout: NodeJS.Timeout;
 const onSearchInput = () => {
     clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(() => {
-        searchUsers();
-    }, 300);
+    searchTimeout = setTimeout(searchUsers, 300);
 };
 
-// Administratora statusa pārslēgšana
+// Piešķir vai atņem admin tiesības
 const toggleAdmin = (user: User) => {
     const action = user.is_admin ? 'noņemt administratora tiesības' : 'piešķirt administratora tiesības';
-    if (confirm(`Vai tiešām vēlaties ${action} lietotājam ${user.name}?`)) {
-        processingUserId.value = user.id;
-        router.post(route('admin.users.toggle-admin', user.id), {}, {
-            preserveScroll: true,
-            onFinish: () => {
-                processingUserId.value = null;
-            },
-        });
-    }
-};
-
-// Lietotāja dzēšana
-const deleteUser = (user: User) => {
-    if (confirm(`Vai tiešām vēlaties dzēst lietotāju ${user.name}? Tas neatgriezeniski dzēsīs visus viņa datus. Šo darbību nevar atsaukt.`)) {
-        processingUserId.value = user.id;
-        router.delete(route('admin.users.delete', user.id), {
-            preserveScroll: true,
-            onFinish: () => {
-                processingUserId.value = null;
-            },
-        });
-    }
-};
-
-// Datuma formatēšana bez ārējām bibliotēkām
-const formatDate = (date: string | null) => {
-    if (!date) return 'Nav apstiprināts';
-    const d = new Date(date);
-    return d.toLocaleDateString('lv-LV', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
+    if (!confirm(`Vai tiešām vēlaties ${action} lietotājam ${user.name}?`)) return;
+    processingUserId.value = user.id;
+    router.post(route('admin.users.toggle-admin', user.id), {}, {
+        preserveScroll: true,
+        onFinish: () => { processingUserId.value = null; },
     });
 };
 
-// Lomas nozīmītes stils
-const getRoleBadgeClass = (isAdmin: boolean) => {
-    return isAdmin
-        ? 'bg-purple-100 text-purple-800 border-purple-200'
-        : 'bg-gray-100 text-gray-700 border-gray-200';
+// Dzēš lietotāju kopā ar visiem datiem
+const deleteUser = (user: User) => {
+    if (!confirm(`Vai tiešām vēlaties dzēst lietotāju ${user.name}? Tas neatgriezeniski dzēsīs visus viņa datus.`)) return;
+    processingUserId.value = user.id;
+    router.delete(route('admin.users.delete', user.id), {
+        preserveScroll: true,
+        onFinish: () => { processingUserId.value = null; },
+    });
 };
 
-// Verifikācijas nozīmītes stils
-const getVerificationBadgeClass = (isVerified: boolean) => {
-    return isVerified
-        ? 'bg-green-100 text-green-800 border-green-200'
-        : 'bg-yellow-100 text-yellow-800 border-yellow-200';
+// Datums latviski bez ārējām bibliotēkām
+const formatDate = (date: string | null) => {
+    if (!date) return 'Nav apstiprināts';
+    return new Date(date).toLocaleDateString('lv-LV', { year: 'numeric', month: 'long', day: 'numeric' });
 };
+
+// CSS klase lomas nozīmītei
+const getRoleBadgeClass = (isAdmin: boolean) =>
+    isAdmin ? 'bg-purple-100 text-purple-800 border-purple-200' : 'bg-gray-100 text-gray-700 border-gray-200';
+
+// CSS klase e-pasta verifikācijas nozīmītei
+const getVerificationBadgeClass = (isVerified: boolean) =>
+    isVerified ? 'bg-green-100 text-green-800 border-green-200' : 'bg-yellow-100 text-yellow-800 border-yellow-200';
 </script>
 
 <template>
@@ -131,16 +97,13 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
 
         <div class="admin-page-container">
             <div class="container-wrapper">
+
                 <!-- Galvene -->
                 <div class="header-section">
                     <div class="header-content">
                         <div>
-                            <h1 class="main-title">
-                                Lietotāju pārvaldība
-                            </h1>
-                            <p class="description-text">
-                                Pārvaldiet visus reģistrētos lietotājus un viņu lomas
-                            </p>
+                            <h1 class="main-title">Lietotāju pārvaldība</h1>
+                            <p class="description-text">Pārvaldiet visus reģistrētos lietotājus un viņu lomas</p>
                         </div>
                         <div class="stats-badge">
                             <Users class="stats-icon" />
@@ -149,37 +112,29 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
                     </div>
                 </div>
 
-                <!-- Statistikas kartītes -->
+                <!-- Statistikas kartiņas -->
                 <div class="stats-grid">
                     <Card class="stat-card">
                         <CardContent class="stat-card-content">
-                            <div class="stat-icon-wrapper users-icon">
-                                <Users class="stat-icon" />
-                            </div>
+                            <div class="stat-icon-wrapper users-icon"><Users class="stat-icon" /></div>
                             <div class="stat-info">
                                 <p class="stat-value">{{ stats.total_users }}</p>
                                 <p class="stat-label">Kopā lietotāju</p>
                             </div>
                         </CardContent>
                     </Card>
-
                     <Card class="stat-card">
                         <CardContent class="stat-card-content">
-                            <div class="stat-icon-wrapper admins-icon">
-                                <Shield class="stat-icon" />
-                            </div>
+                            <div class="stat-icon-wrapper admins-icon"><Shield class="stat-icon" /></div>
                             <div class="stat-info">
                                 <p class="stat-value">{{ stats.total_admins }}</p>
                                 <p class="stat-label">Administratori</p>
                             </div>
                         </CardContent>
                     </Card>
-
                     <Card class="stat-card">
                         <CardContent class="stat-card-content">
-                            <div class="stat-icon-wrapper active-icon">
-                                <Users class="stat-icon" />
-                            </div>
+                            <div class="stat-icon-wrapper active-icon"><Users class="stat-icon" /></div>
                             <div class="stat-info">
                                 <p class="stat-value">{{ stats.active_users_7d }}</p>
                                 <p class="stat-label">Jauni lietotāji (7 dienās)</p>
@@ -188,29 +143,22 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
                     </Card>
                 </div>
 
-                <!-- Lietotāju pārvaldības kartīte -->
+                <!-- Galvenā tabula -->
                 <Card class="users-card">
                     <CardHeader class="card-header">
                         <div class="header-icon-wrapper">
-                            <div class="icon-circle">
-                                <Users class="icon" />
-                            </div>
+                            <div class="icon-circle"><Users class="icon" /></div>
                             <div>
-                                <CardTitle class="card-title">
-                                    Visi lietotāji
-                                </CardTitle>
-                                <CardDescription class="card-description">
-                                    Skatīt un pārvaldīt visus reģistrētos lietotājus
-                                </CardDescription>
+                                <CardTitle class="card-title">Visi lietotāji</CardTitle>
+                                <CardDescription class="card-description">Skatīt un pārvaldīt visus reģistrētos lietotājus</CardDescription>
                             </div>
                         </div>
 
-                        <!-- Meklēšanas josla -->
+                        <!-- Meklēšanas lauks -->
                         <div class="search-wrapper">
                             <div class="search-input-container">
                                 <Search class="search-icon" />
-                                <Input v-model="searchQuery"
-                                       @input="onSearchInput"
+                                <Input v-model="searchQuery" @input="onSearchInput"
                                        placeholder="Meklēt pēc vārda vai e-pasta..."
                                        class="search-input" />
                             </div>
@@ -218,7 +166,6 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
                     </CardHeader>
 
                     <CardContent class="card-content">
-                        <!-- Lietotāju tabula -->
                         <div class="users-table-container">
                             <table class="users-table">
                                 <thead>
@@ -237,9 +184,7 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
                                 <tbody>
                                     <tr v-for="user in users.data" :key="user.id" class="table-row">
                                         <td class="user-cell">
-                                            <div class="user-avatar">
-                                                {{ user.name.charAt(0).toUpperCase() }}
-                                            </div>
+                                            <div class="user-avatar">{{ user.name.charAt(0).toUpperCase() }}</div>
                                             <div class="user-info">
                                                 <Link :href="route('admin.users.show', user.id)" class="user-name">
                                                 {{ user.name }}
@@ -266,15 +211,9 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
                                                 {{ user.email_verified_at ? 'Apstiprināts' : 'Gaida apstiprinājumu' }}
                                             </span>
                                         </td>
-                                        <td class="stats-cell">
-                                            <span class="stats-number">{{ user.routines_count }}</span>
-                                        </td>
-                                        <td class="stats-cell">
-                                            <span class="stats-number">{{ user.goals_count }}</span>
-                                        </td>
-                                        <td class="stats-cell">
-                                            <span class="stats-number">{{ user.workout_logs_count }}</span>
-                                        </td>
+                                        <td class="stats-cell"><span class="stats-number">{{ user.routines_count }}</span></td>
+                                        <td class="stats-cell"><span class="stats-number">{{ user.goals_count }}</span></td>
+                                        <td class="stats-cell"><span class="stats-number">{{ user.workout_logs_count }}</span></td>
                                         <td class="date-cell">
                                             <Calendar class="date-icon" />
                                             {{ formatDate(user.created_at) }}
@@ -283,8 +222,7 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
                                             <div class="action-buttons">
                                                 <Button @click="toggleAdmin(user)"
                                                         :disabled="processingUserId === user.id"
-                                                        variant="outline"
-                                                        size="sm"
+                                                        variant="outline" size="sm"
                                                         :class="['action-btn', user.is_admin ? 'demote-btn' : 'promote-btn']">
                                                     <Shield v-if="!user.is_admin" class="action-icon" />
                                                     <ShieldAlert v-else class="action-icon" />
@@ -292,8 +230,7 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
                                                 </Button>
                                                 <Button @click="deleteUser(user)"
                                                         :disabled="processingUserId === user.id"
-                                                        variant="outline"
-                                                        size="sm"
+                                                        variant="outline" size="sm"
                                                         class="action-btn delete-btn">
                                                     <Trash2 class="action-icon" />
                                                     Dzēst
@@ -311,8 +248,7 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
                                 Rāda {{ users.data.length }} no {{ users.total }} lietotājiem
                             </div>
                             <div class="pagination-buttons">
-                                <Link v-for="link in users.links"
-                                      :key="link.label"
+                                <Link v-for="link in users.links" :key="link.label"
                                       :href="link.url || '#'"
                                       :class="['pagination-link', { active: link.active, disabled: !link.url }]"
                                       v-html="link.label" />
@@ -372,7 +308,7 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
         background: white;
         border-radius: 9999px;
         border: 2px solid #e2e8f0;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
         font-weight: 600;
         color: #1e293b;
     }
@@ -383,7 +319,7 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
         color: #f97316;
     }
 
-    /* Statistikas režģis */
+    /* Statistikas kartiņas */
     .stats-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -400,7 +336,7 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
 
         .stat-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
         }
 
     .stat-card-content {
@@ -418,6 +354,7 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
         justify-content: center;
     }
 
+    /* Katras kartiņas krāsa */
     .users-icon {
         background: linear-gradient(135deg, #3b82f6, #2563eb);
     }
@@ -453,7 +390,7 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
         margin-top: 0.25rem;
     }
 
-    /* Lietotāju kartīte */
+    /* Galvenā tabulas kartīte */
     .users-card {
         border: 2px solid #e2e8f0;
         border-radius: 1rem;
@@ -505,7 +442,6 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
         margin-top: 0.25rem;
     }
 
-    /* Meklēšana */
     .search-wrapper {
         display: flex;
         gap: 0.75rem;
@@ -561,7 +497,7 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
     }
 
         .table-row:hover {
-            background: #faf9ff;
+            background: #fff7ed;
         }
 
         .table-row td {
@@ -574,6 +510,7 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
         gap: 0.75rem;
     }
 
+    /* Avatara burts — oranžs fons */
     .user-avatar {
         width: 2.5rem;
         height: 2.5rem;
@@ -585,6 +522,7 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
         color: white;
         font-weight: 600;
         font-size: 1rem;
+        flex-shrink: 0;
     }
 
     .user-name {
@@ -677,6 +615,7 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
         gap: 0.375rem;
     }
 
+    /* Admin piešķiršana/atņemšana */
     .promote-btn {
         border-color: #8b5cf6;
         color: #8b5cf6;
@@ -761,7 +700,7 @@ const getVerificationBadgeClass = (isVerified: boolean) => {
             cursor: not-allowed;
         }
 
-    /* Responsīvais dizains */
+    /* Mobilais */
     @media (max-width: 1024px) {
         .stats-grid {
             grid-template-columns: repeat(2, 1fr);

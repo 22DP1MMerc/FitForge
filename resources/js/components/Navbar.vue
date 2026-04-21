@@ -1,4 +1,4 @@
-<!-- resources/js/Layouts/Navbar.vue -->
+
 <template>
     <nav class="navbar">
         <div class="navbar-container">
@@ -12,7 +12,6 @@
                     <li><Link href="/" class="nav-link">Sākums</Link></li>
                     <li><Link href="/routines" class="nav-link">Rutīnas</Link></li>
                     <li><Link href="/exercises" class="nav-link">Vingrinājumi</Link></li>
-                    <!-- Show workout logs link only when user is logged in -->
                     <li v-if="user">
                         <Link :href="route('workout-logs.index')" class="nav-link">
                         Treniņu vēsture
@@ -29,11 +28,10 @@
                 </ul>
 
                 <div class="nav-links-right" v-if="user">
-                    <!-- Profile link -->
                     <Link :href="route('profile.edit')" class="nav-link">
                     Profils
                     </Link>
-                    <button @click="$inertia.post(route('logout'))" class="nav-link logout-button">
+                    <button @click="logout" class="nav-link logout-button">
                         Iziet
                     </button>
                 </div>
@@ -48,15 +46,19 @@
 </template>
 
 <script setup lang="ts">
-    import { ref, computed } from 'vue'
-    import { Link, usePage } from '@inertiajs/vue3'
+import { ref, computed } from 'vue';
+import { Link, usePage, router } from '@inertiajs/vue3';
 
-    const isOpen = ref(false)
-    const user = computed(() => usePage().props.auth.user)
+const isOpen = ref(false);
+const user = computed(() => usePage().props.auth.user);
+
+// $inertia.post ir novecojis — izmantojam router
+const logout = () => {
+    router.post(route('logout'));
+};
 </script>
 
 <style scoped>
-    /* ATGRIEZTIE STILI - sākotnējā versija */
     .navbar {
         background-color: black;
         padding: 14px 30px;

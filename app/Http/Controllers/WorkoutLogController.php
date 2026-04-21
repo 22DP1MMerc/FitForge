@@ -17,7 +17,7 @@ class WorkoutLogController extends Controller
             ->where('user_id', $user->id)
             ->orderBy('completed_at', 'desc');
 
-        // Meklēšana pēc nosaukuma
+        // meklēšana pēc nosaukuma, piezīmēm vai rutīnas
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
@@ -27,7 +27,7 @@ class WorkoutLogController extends Controller
             });
         }
 
-        // Filtrēšana pēc mēneša
+        // filtrē pēc izvēlētā mēneša
         if ($request->filled('month')) {
             $query->where('completed_at', 'like', $request->month . '%');
         }
@@ -49,20 +49,22 @@ class WorkoutLogController extends Controller
             'total_weight' => $log->total_weight,
         ]);
 
+        // vispārīgā statistika augšpanelim
         $stats = [
-            'total_workouts'       => WorkoutLog::where('user_id', $user->id)->count(),
-            'total_duration'       => WorkoutLog::where('user_id', $user->id)->sum('duration_minutes'),
-            'this_month_workouts'  => WorkoutLog::where('user_id', $user->id)
+            'total_workouts'      => WorkoutLog::where('user_id', $user->id)->count(),
+            'total_duration'      => WorkoutLog::where('user_id', $user->id)->sum('duration_minutes'),
+            'this_month_workouts' => WorkoutLog::where('user_id', $user->id)
                 ->whereMonth('completed_at', now()->month)
                 ->whereYear('completed_at', now()->year)
                 ->count(),
         ];
 
+        // latvieši grib latviski mēnešus
         $latvianMonths = [
-            'January' => 'janvāris', 'February' => 'februāris', 'March' => 'marts',
-            'April' => 'aprīlis',    'May' => 'maijs',           'June' => 'jūnijs',
-            'July' => 'jūlijs',      'August' => 'augusts',      'September' => 'septembris',
-            'October' => 'oktobris', 'November' => 'novembris',  'December' => 'decembris',
+            'January' => 'janvāris',   'February' => 'februāris', 'March'    => 'marts',
+            'April'   => 'aprīlis',    'May'      => 'maijs',      'June'     => 'jūnijs',
+            'July'    => 'jūlijs',     'August'   => 'augusts',    'September' => 'septembris',
+            'October' => 'oktobris',   'November' => 'novembris',  'December' => 'decembris',
         ];
 
         $months = WorkoutLog::where('user_id', $user->id)
@@ -95,36 +97,38 @@ class WorkoutLogController extends Controller
             ->findOrFail($id);
 
         $workoutLog->log_exercises = $workoutLog->logExercises->map(function ($logExercise) {
-            $reps    = is_array($logExercise->reps_completed) ? $logExercise->reps_completed : [];
-            $weights = is_array($logExercise->weights_used)   ? $logExercise->weights_used   : [];
 
-            $setsData = [];
-            for ($i = 0; $i < min(count($reps), $logExercise->sets_completed); $i++) {
-                $setsData[] = [
-                    'reps'   => $reps[$i] ?? 0,
-                    'weight' => is_array($weights[$i]) ? ($weights[$i]['weight'] ?? 0) : ($weights[$i] ?? 0),
-                ];
-            }
+            $reps      = is_array($logExercise->reps_completed)      ? $logExercise->reps_completed      : [];
+            $weights   = is_array($logExercise->weights_used)        ? $logExercise->weights_used        : [];
+            $durations = is_array($logExercise->durations_completed) ? $logExercise->durations_completed : [];
+
+            $exerciseType   = $logExercise->exercise->type         ?? 'strength';
+            $exerciseMuscle = $logExercise->exercise->muscle_group ?? '';
+            $isCardio       = $exerciseType === 'cardio' || $exerciseMuscle === 'Kardio';
 
             return [
-                'id'             => $logExercise->id,
-                'exercise'       => $logExercise->exercise ? [
+                'id'       => $logExercise->id,
+                'exercise' => $logExercise->exercise ? [
                     'id'           => $logExercise->exercise->id,
                     'name'         => $logExercise->exercise->name,
                     'muscle_group' => $logExercise->exercise->muscle_group,
+                    'type'         => $exerciseType,
                 ] : null,
-                'sets_completed' => $logExercise->sets_completed,
-                'sets_planned'   => $logExercise->sets_planned,
-                'reps_planned'   => $logExercise->reps_planned,
-                'reps_completed' => $reps,
-                'weights_used'   => $weights,
-                'sets_data'      => $setsData,
-                'notes'          => $logExercise->notes,
+                'sets_completed'      => $logExercise->sets_completed,
+                'sets_planned'        => $logExercise->sets_planned  ?? 0,
+                'reps_planned'        => $logExercise->reps_planned  ?? 0,
+                'reps_completed'      => $reps,
+                'weights_used'        => $weights,
+                'durations_completed' => $durations,
+                // nodod frontendā lai zina vai rādīt kardio vai strength
+                'is_cardio'           => $isCardio,
+                'notes'               => $logExercise->notes,
             ];
         });
 
         $stats = $this->calculateWorkoutStats($workoutLog);
 
+        // pēdējā mēneša treniņi sānjoslai
         $similarWorkouts = WorkoutLog::where('user_id', $user->id)
             ->where('id', '!=', $id)
             ->whereDate('completed_at', '>=', Carbon::now()->subMonth())
@@ -151,7 +155,7 @@ class WorkoutLogController extends Controller
                 ] : null,
                 'log_exercises' => $workoutLog->log_exercises,
             ],
-            'stats'          => $stats,
+            'stats'           => $stats,
             'similarWorkouts' => $similarWorkouts,
         ]);
     }
@@ -165,21 +169,31 @@ class WorkoutLogController extends Controller
 
     private function calculateWorkoutStats($workoutLog): array
     {
-        $totalSets   = 0;
-        $totalReps   = 0;
-        $totalWeight = 0;
-        $muscleGroups = [];
+        $totalSets       = 0;
+        $totalReps       = 0;
+        $totalWeight     = 0;
+        $totalCardioSets = 0;
+        $totalCardioTime = 0; // sekundēs
+        $muscleGroups    = [];
 
         foreach ($workoutLog->log_exercises as $ex) {
             $totalSets += $ex['sets_completed'];
 
-            foreach ($ex['reps_completed'] as $reps) {
-                if (is_numeric($reps)) $totalReps += $reps;
-            }
-
-            foreach ($ex['weights_used'] as $weight) {
-                if (is_numeric($weight)) $totalWeight += $weight;
-                elseif (is_array($weight) && isset($weight['weight'])) $totalWeight += $weight['weight'];
+            if ($ex['is_cardio']) {
+                // kardio — skaita laiku, nevis svaru
+                $totalCardioSets += $ex['sets_completed'];
+                foreach ($ex['durations_completed'] as $dur) {
+                    if (is_numeric($dur)) $totalCardioTime += $dur;
+                }
+            } else {
+                // strength — parastais aprēķins
+                foreach ($ex['reps_completed'] as $reps) {
+                    if (is_numeric($reps)) $totalReps += $reps;
+                }
+                foreach ($ex['weights_used'] as $weight) {
+                    if (is_numeric($weight)) $totalWeight += $weight;
+                    elseif (is_array($weight) && isset($weight['weight'])) $totalWeight += $weight['weight'];
+                }
             }
 
             if ($ex['exercise'] && $ex['exercise']['muscle_group']) {
@@ -188,13 +202,24 @@ class WorkoutLogController extends Controller
             }
         }
 
+        $strengthSets = $totalSets - $totalCardioSets;
+
+        $cardioMins      = floor($totalCardioTime / 60);
+        $cardioSecs      = $totalCardioTime % 60;
+        $cardioFormatted = $totalCardioTime > 0
+            ? ($cardioMins > 0 ? "{$cardioMins}min {$cardioSecs}s" : "{$cardioSecs}s")
+            : null;
+
         return [
-            'total_sets'              => $totalSets,
-            'total_reps'              => $totalReps,
-            'total_weight'            => round($totalWeight, 1),
-            'average_reps_per_set'    => $totalSets > 0 ? round($totalReps / $totalSets, 1) : 0,
-            'average_weight_per_set'  => $totalSets > 0 ? round($totalWeight / $totalSets, 1) : 0,
-            'muscle_groups'           => $muscleGroups,
+            'total_sets'             => $totalSets,
+            'total_reps'             => $totalReps,
+            'total_weight'           => round($totalWeight, 1),
+            'average_reps_per_set'   => $strengthSets > 0 ? round($totalReps / $strengthSets, 1) : 0,
+            'average_weight_per_set' => $strengthSets > 0 ? round($totalWeight / $strengthSets, 1) : 0,
+            'total_cardio_seconds'   => $totalCardioTime,
+            'total_cardio_formatted' => $cardioFormatted,
+            'total_cardio_sets'      => $totalCardioSets,
+            'muscle_groups'          => $muscleGroups,
         ];
     }
 }

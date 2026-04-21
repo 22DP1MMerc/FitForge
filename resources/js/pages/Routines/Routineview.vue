@@ -1,1020 +1,788 @@
+<!-- resources/js/Pages/Routines/RoutineView.vue -->
+
+<script setup lang="ts">
+import AppLayout from '@/Layouts/AppLayout.vue';
+import Modal from '@/Components/Modal.vue';
+import { useModal } from '@/Composables/useModal';
+import { Head, Link, router } from '@inertiajs/vue3';
+import { ref, onMounted, onUnmounted, computed } from 'vue';
+import axios from 'axios';
+
+const { modalRef, confirm, success, error } = useModal();
+
+// Props — auth satur arī is_admin
+const props = defineProps<{
+    routines: any[];
+    auth:     { user?: any } | null;
+}>();
+
+const activeRoutine   = ref<any>(null);
+const selectedRoutine = ref<any>(null);
+
+const isAuthenticated = computed(() => !!props.auth?.user);
+
+// Pārbauda vai lietotājs ir admins
+const isAdmin = computed(() => !!props.auth?.user?.is_admin);
+
+const dayNames: Record<number, string> = {
+    1: 'Pirmdiena', 2: 'Otrdiena',   3: 'Trešdiena',
+    4: 'Ceturtdiena', 5: 'Piektdiena', 6: 'Sestdiena', 7: 'Svētdiena',
+};
+
+const getDayName = (n: number) => dayNames[n] ?? `Diena ${n}`;
+
+const getExercisesForDay = (routine: any, day: number) =>
+    (routine.exercises ?? []).filter((e: any) => e.pivot?.day_number === day);
+
+const getExercisesCountForDay = (routine: any, day: number) =>
+    getExercisesForDay(routine, day).length;
+
+const getTotalExercisesCount = (routine: any) =>
+    new Set((routine.exercises ?? []).map((e: any) => e.id)).size;
+
+// Savas rutīnas augšā, pārējās apakšā — abas grupas pēc datuma
+const sortedRoutines = computed(() => {
+    if (!props.auth?.user) return props.routines;
+    const uid  = props.auth.user.id;
+    const mine = props.routines.filter(r => r.user_id === uid);
+    const rest = props.routines.filter(r => r.user_id !== uid);
+    return [...mine, ...rest];
+});
+
+// Vai rādīt šķirtāju starp savām un svešajām
+const firstOtherIndex = computed(() => {
+    if (!props.auth?.user) return -1;
+    const uid = props.auth.user.id;
+    return sortedRoutines.value.findIndex(r => r.user_id !== uid);
+});
+
+// Admins var dzēst visu, parasts lietotājs — tikai savas
+const canDelete = (routine: any) =>
+    isAdmin.value || (isAuthenticated.value && props.auth?.user?.id === routine.user_id);
+
+// Rediģēt var tikai īpašnieks (admins arī)
+const canEdit = (routine: any) =>
+    isAdmin.value || (isAuthenticated.value && props.auth?.user?.id === routine.user_id);
+
+const editRoutine = (routine: any) => {
+    if (!isAuthenticated.value) return;
+    closeModal();
+    router.visit(`/routines/${routine.id}/edit`);
+};
+
+// Dzēšana ar custom modālu
+const deleteRoutine = async (routine: any) => {
+    if (!canDelete(routine)) return;
+
+    const confirmed = await confirm({
+        title:       'Dzēst rutīnu?',
+        message:     `Vai tiešām dzēst rutīnu "${routine.name}"?`,
+        details:     { 'Vingrinājumi': getTotalExercisesCount(routine) },
+        confirmText: 'Dzēst',
+        cancelText:  'Atcelt',
+    });
+
+    if (!confirmed) return;
+
+    if (activeRoutine.value?.id === routine.id) {
+        localStorage.removeItem('activeRoutine');
+        localStorage.setItem('routineChanged', 'true');
+        activeRoutine.value = null;
+    }
+
+    closeModal();
+    router.delete(route('routines.destroy', { routine: routine.id }), {
+        onError: async () => await error('Kļūda dzēšot rutīnu.'),
+    });
+};
+
+const handleEscape = (e: KeyboardEvent) => {
+    if (e.key === 'Escape' && selectedRoutine.value) closeModal();
+};
+
+onMounted(() => {
+    if (isAuthenticated.value) {
+        const saved = localStorage.getItem('activeRoutine');
+        if (saved) {
+            try { activeRoutine.value = JSON.parse(saved); }
+            catch { localStorage.removeItem('activeRoutine'); }
+        }
+    }
+    document.addEventListener('keydown', handleEscape);
+});
+
+onUnmounted(() => document.removeEventListener('keydown', handleEscape));
+
+const setAsActiveRoutine = async (routine: any) => {
+    if (!isAuthenticated.value) return;
+    try {
+        const res  = await axios.post(`/routines/${routine.id}/set-active`);
+        const data = res.data?.routine ?? {
+            id: routine.id, name: routine.name,
+            description: routine.description || '',
+            is_public:   routine.is_public || false,
+            exercises: (routine.exercises || []).map((ex: any) => ({
+                id: ex.id, name: ex.name, muscle_group: ex.muscle_group || '',
+                sets: ex.pivot?.sets || 3, reps: ex.pivot?.reps || 10,
+                rest_seconds: ex.pivot?.rest_seconds || 60,
+                day_number:   ex.pivot?.day_number || 1,
+                notes:        ex.pivot?.notes || '',
+            })),
+        };
+
+        localStorage.setItem('activeRoutine', JSON.stringify(data));
+        localStorage.setItem('routineChanged', 'true');
+        activeRoutine.value = data;
+
+        await success(`Rutīna "${routine.name}" iestatīta kā aktīvā!`, 'Veiksmīgi!');
+        closeModal();
+    } catch (e) {
+        await error('Neizdevās iestatīt rutīnu. Mēģiniet vēlreiz.');
+    }
+};
+
+const clearActiveRoutine = async () => {
+    if (!isAuthenticated.value) return;
+    const confirmed = await confirm({
+        title: 'Noņemt aktīvo rutīnu?',
+        message: 'Vai tiešām vēlies noņemt aktīvo rutīnu?',
+        confirmText: 'Noņemt', cancelText: 'Atcelt',
+    });
+    if (!confirmed) return;
+    localStorage.removeItem('activeRoutine');
+    localStorage.setItem('routineChanged', 'true');
+    activeRoutine.value = null;
+};
+
+const viewRoutineDetails = (routine: any) => {
+    selectedRoutine.value = routine;
+    document.body.style.overflow = 'hidden';
+};
+
+const closeModal = () => {
+    selectedRoutine.value = null;
+    document.body.style.overflow = 'auto';
+};
+
+const startRoutineWorkout = async (routine: any) => {
+    if (!isAuthenticated.value) return;
+    try {
+        const today    = new Date().getDay();
+        const todayNum = today === 0 ? 7 : today;
+
+        const todayExercises = (routine.exercises ?? [])
+            .filter((e: any) => (e.pivot?.day_number ?? e.day_number ?? 1) === todayNum)
+            .map((e: any) => ({
+                id: e.id, name: e.name, muscle_group: e.muscle_group || '',
+                sets: e.pivot?.sets ?? e.sets ?? 3,
+                reps: e.pivot?.reps ?? e.reps ?? 10,
+                rest_seconds: e.pivot?.rest_seconds ?? e.rest_seconds ?? 60,
+                notes:      e.pivot?.notes ?? e.notes ?? '',
+                day_number: e.pivot?.day_number ?? e.day_number ?? 1,
+            }));
+
+        if (!todayExercises.length) {
+            const dn = ['Svētdiena','Pirmdiena','Otrdiena','Trešdiena','Ceturtdiena','Piektdiena','Sestdiena'];
+            await error(`Šodien (${dn[today]}) nav vingrinājumu rutīnā "${routine.name}".`, 'Nav vingrinājumu');
+            return;
+        }
+
+        const res = await axios.post('/workout/free/start', {
+            name:       `${routine.name} - ${new Date().toLocaleDateString('lv-LV')}`,
+            routine_id: routine.id,
+            exercises:  todayExercises,
+        });
+
+        if (res.data?.success) {
+            router.visit(res.data.session_id ? `/workout/free?session=${res.data.session_id}` : '/workout/free');
+        } else {
+            throw new Error(res.data?.message ?? 'Nezināma kļūda');
+        }
+    } catch (e: any) {
+        await error('Kļūda: ' + (e.response?.data?.message ?? e.message));
+    }
+};
+</script>
+
 <template>
     <AppLayout>
-        <Head title="My Routines" />
+        <Head title="Manas rutīnas" />
 
-        <div class="routines-page">
-            <div class="routines-container">
-                <div class="routines-content">
-                    <div class="routines-header">
-                        <h1>Manas rutīnas</h1>
-                        <div class="header-actions">
-                            <Link v-if="isAuthenticated" href="/routines/create" class="create-button">
-                            Izveidot jaunu rutīnu
-                            </Link>
-                            <div v-else class="auth-required-message">
-                                Pierakstieties, lai izveidotu rutīnas
+        <div class="page">
+            <div class="container">
+
+                <div class="page-header">
+                    <h1>Manas rutīnas</h1>
+                    <div class="header-right">
+                        <!-- Admin zīmīte -->
+                        <span v-if="isAdmin" class="admin-badge">👑 Admin</span>
+                        <Link v-if="isAuthenticated" href="/routines/create" class="btn btn--primary">
+                        + Izveidot rutīnu
+                        </Link>
+                        <span v-else class="auth-notice">Pierakstieties, lai izveidotu rutīnas</span>
+                    </div>
+                </div>
+
+                <!-- Aktīvās rutīnas josla -->
+                <div v-if="isAuthenticated && activeRoutine" class="active-banner">
+                    <div class="active-banner__inner">
+                        <div>
+                            <p class="active-banner__label">Aktīvā rutīna</p>
+                            <h3 class="active-banner__name">{{ activeRoutine.name }}</h3>
+                            <div class="active-banner__tags">
+                                <span class="tag tag--white">{{ getTotalExercisesCount(activeRoutine) }} vingrinājumi</span>
+                                <span v-if="activeRoutine.is_public" class="tag tag--white">Publiska</span>
                             </div>
                         </div>
+                        <button @click="clearActiveRoutine" class="btn btn--ghost">Noņemt</button>
                     </div>
+                </div>
 
-                    <!-- Aktīvās rutīnas indikators -->
-                    <div v-if="isAuthenticated && activeRoutine" class="active-routine-banner">
-                        <div class="active-routine-content">
-                            <div class="routine-info">
-                                <h3>🏋️ Aktīvā rutīna</h3>
-                                <h4>{{ activeRoutine.name }}</h4>
-                                <div class="routine-details">
-                                    <span class="exercise-count">{{ getTotalExercisesCount(activeRoutine) }} vingrinājumi</span>
-                                    <span v-if="activeRoutine.is_public" class="public-tag">Publiska</span>
-                                </div>
-                            </div>
-                            <button @click="clearActiveRoutine" class="remove-active-btn">
-                                Noņemt
-                            </button>
+                <!-- Šķirtājs — savas rutīnas -->
+                <div v-if="isAuthenticated && sortedRoutines.some(r => r.user_id === auth?.user?.id)" class="section-label">
+                    Manas rutīnas
+                </div>
+
+                <div class="grid">
+                    <template v-for="(routine, index) in sortedRoutines" :key="routine.id">
+
+                        <!-- Šķirtājs pirms svešajām rutīnām -->
+                        <div v-if="index === firstOtherIndex && firstOtherIndex > 0"
+                             class="grid-divider">
+                            <span>Publiskās rutīnas</span>
                         </div>
-                    </div>
 
-                    <div class="routines-list">
-                        <div class="routines-grid">
-                            <div v-for="routine in routines" :key="routine.id"
-                                 :class="['routine-card', routine.id === activeRoutine?.id ? 'active-routine' : '']">
-                                <div class="routine-content">
-                                    <div class="routine-header">
-                                        <h2>{{ routine.name }}</h2>
-                                        <div v-if="isAuthenticated && routine.id === activeRoutine?.id" class="active-badge">
-                                            Aktīvā
-                                        </div>
-                                    </div>
-                                    <p class="routine-description">{{ routine.description || 'Nav apraksta' }}</p>
-
-                                    <div class="routine-meta">
-                                        <span class="exercise-count">{{ getTotalExercisesCount(routine) }} vingrinājumi</span>
-                                        <span v-if="routine.is_public" class="public-tag">Publiska</span>
-                                    </div>
-
-                                    <div class="routine-actions">
-                                        <button @click="viewRoutineDetails(routine)" class="view-btn">
-                                            👁️ Skatīt
-                                        </button>
-
-                                        <button v-if="isAuthenticated" @click="editRoutine(routine)" class="edit-btn">
-                                            ✏️ Rediģēt
-                                        </button>
-
-                                        <button v-if="isAuthenticated" @click="startRoutineWorkout(routine)" class="start-btn">
-                                            ▶️ Sākt treniņu
-                                        </button>
-                                        <button v-if="isAuthenticated"
-                                                @click="setAsActiveRoutine(routine)"
-                                                :class="['set-active-btn', routine.id === activeRoutine?.id ? 'is-active' : '']">
-                                            {{ routine.id === activeRoutine?.id ? '✅ Aktīvā' : '⭐ Iestatīt' }}
-                                        </button>
-                                    </div>
+                        <div :class="['card', routine.id === activeRoutine?.id && 'card--active', routine.user_id !== auth?.user?.id && 'card--other']">
+                            <div class="card__head">
+                                <h2>{{ routine.name }}</h2>
+                                <div class="card__badges">
+                                    <span v-if="isAuthenticated && routine.id === activeRoutine?.id" class="badge badge--orange">Aktīvā</span>
+                                    <!-- Rāda autoru ja skatās svešu rutīnu -->
+                                    <span v-if="routine.user_id !== auth?.user?.id && routine.user" class="badge badge--grey">{{ routine.user.name }}</span>
                                 </div>
                             </div>
 
-                            <div v-if="routines.length === 0" class="empty-state">
-                                <div class="empty-icon">
-                                    🏋️
-                                </div>
-                                <p>Jums vēl nav izveidota neviena rutīna.</p>
-                                <Link v-if="isAuthenticated" href="/routines/create" class="create-button">
-                                Izveidot pirmo rutīnu
-                                </Link>
-                                <div v-else class="auth-message">
-                                    <p>Pierakstieties, lai izveidotu rutīnas!</p>
-                                    <Link href="/login" class="login-btn">
-                                    Pierakstīties
-                                    </Link>
-                                </div>
+                            <p class="card__desc">{{ routine.description || 'Nav apraksta' }}</p>
+
+                            <div class="card__meta">
+                                <span class="tag">{{ getTotalExercisesCount(routine) }} vingrinājumi</span>
+                                <span v-if="routine.is_public" class="tag tag--green">Publiska</span>
                             </div>
+
+                            <div class="card__actions">
+                                <button @click="viewRoutineDetails(routine)" class="btn btn--outline">Skatīt</button>
+                                <button v-if="canEdit(routine)" @click="editRoutine(routine)" class="btn btn--dark">Rediģēt</button>
+                                <button v-if="isAuthenticated" @click="startRoutineWorkout(routine)" class="btn btn--primary">Sākt</button>
+                                <button v-if="isAuthenticated"
+                                        @click="setAsActiveRoutine(routine)"
+                                        :class="['btn', routine.id === activeRoutine?.id ? 'btn--active' : 'btn--outline']">
+                                    {{ routine.id === activeRoutine?.id ? '★ Aktīvā' : 'Iestatīt' }}
+                                </button>
+                                <!-- Dzēst: admins var visu, lietotājs — tikai savējo -->
+                                <button v-if="canDelete(routine)" @click="deleteRoutine(routine)" class="btn btn--danger">
+                                    {{ isAdmin && routine.user_id !== auth?.user?.id ? '👑 Dzēst' : 'Dzēst' }}
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+
+                    <div v-if="sortedRoutines.length === 0" class="empty">
+                        <div class="empty__icon">🏋️</div>
+                        <p>Vēl nav nevienas rutīnas.</p>
+                        <Link v-if="isAuthenticated" href="/routines/create" class="btn btn--primary">
+                        Izveidot pirmo rutīnu
+                        </Link>
+                        <div v-else class="empty__auth">
+                            <p>Pierakstieties, lai sāktu!</p>
+                            <Link href="/login" class="btn btn--dark">Pierakstīties</Link>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Rutīnas detaļu modals -->
-            <div v-if="selectedRoutine" class="modal-overlay" @click.self="closeModal">
+            <!-- Detaļu modāls -->
+            <div v-if="selectedRoutine" class="overlay" @click.self="closeModal">
                 <div class="modal">
-                    <div class="modal-header">
+                    <div class="modal__head">
                         <h2>{{ selectedRoutine.name }}</h2>
-                        <button @click="closeModal" class="modal-close">
-                            ✕
-                        </button>
+                        <button @click="closeModal" class="modal__close">✕</button>
                     </div>
 
-                    <div class="modal-body">
-                        <div class="modal-section">
-                            <h3>📝 Apraksts</h3>
+                    <div class="modal__body">
+                        <div class="modal__section">
+                            <h3>Apraksts</h3>
                             <p>{{ selectedRoutine.description || 'Nav apraksta' }}</p>
                         </div>
 
-                        <div class="modal-section">
-                            <h3>📊 Informācija</h3>
+                        <div class="modal__section">
+                            <h3>Informācija</h3>
                             <div class="info-grid">
                                 <div class="info-item">
-                                    <span class="info-label">Vingrinājumi:</span>
-                                    <span class="info-value">{{ getTotalExercisesCount(selectedRoutine) }}</span>
+                                    <span class="info-item__label">Vingrinājumi</span>
+                                    <span class="info-item__val">{{ getTotalExercisesCount(selectedRoutine) }}</span>
                                 </div>
                                 <div class="info-item">
-                                    <span class="info-label">Statuss:</span>
-                                    <span :class="['info-value', selectedRoutine.is_public ? 'public' : 'private']">
+                                    <span class="info-item__label">Statuss</span>
+                                    <span :class="['badge', selectedRoutine.is_public ? 'badge--green' : 'badge--grey']">
                                         {{ selectedRoutine.is_public ? 'Publiska' : 'Privāta' }}
                                     </span>
                                 </div>
+                                <div v-if="selectedRoutine.user" class="info-item">
+                                    <span class="info-item__label">Autors</span>
+                                    <span class="info-item__val" style="font-size:0.95rem">{{ selectedRoutine.user.name }}</span>
+                                </div>
                                 <div v-if="isAuthenticated && selectedRoutine.id === activeRoutine?.id" class="info-item">
-                                    <span class="info-label">Status:</span>
-                                    <span class="info-value active">⭐ Aktīvā</span>
+                                    <span class="info-item__label">Aktīvā</span>
+                                    <span class="badge badge--orange">Jā</span>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="modal-section">
-                            <h3>🗓️ Nedēļas grafiks</h3>
-                            <div class="week-schedule-detailed">
-                                <div v-for="day in 7" :key="day" class="day-plan">
-                                    <div class="day-header">
+                        <div class="modal__section">
+                            <h3>Nedēļas grafiks</h3>
+                            <div class="schedule">
+                                <div v-for="day in 7" :key="day" class="day">
+                                    <div class="day__head">
                                         <h4>{{ getDayName(day) }}</h4>
-                                        <span class="day-count">
-                                            {{ getExercisesCountForDay(selectedRoutine, day) }} vingrinājumi
-                                        </span>
+                                        <span class="badge badge--orange">{{ getExercisesCountForDay(selectedRoutine, day) }}</span>
                                     </div>
-
-                                    <div v-if="getExercisesForDay(selectedRoutine, day).length > 0" class="exercises-list">
-                                        <div v-for="exercise in getExercisesForDay(selectedRoutine, day)"
-                                             :key="exercise.id || exercise.name"
-                                             class="exercise-card">
-                                            <div class="exercise-header">
-                                                <div class="exercise-title">
-                                                    <h5>{{ exercise.name }}</h5>
-                                                    <span class="muscle-badge">{{ exercise.muscle_group }}</span>
+                                    <div v-if="getExercisesForDay(selectedRoutine, day).length" class="ex-list">
+                                        <div v-for="ex in getExercisesForDay(selectedRoutine, day)" :key="ex.id ?? ex.name" class="ex-card">
+                                            <div class="ex-card__head">
+                                                <h5>{{ ex.name }}</h5>
+                                                <span class="tag tag--orange">{{ ex.muscle_group }}</span>
+                                            </div>
+                                            <div class="specs">
+                                                <div class="spec"><span>Seti</span><strong>{{ ex.pivot?.sets ?? ex.sets ?? 3 }}</strong></div>
+                                                <div class="spec"><span>Reps</span><strong>{{ ex.pivot?.reps ?? ex.reps ?? 10 }}</strong></div>
+                                                <div v-if="ex.pivot?.rest_seconds ?? ex.rest_seconds" class="spec">
+                                                    <span>Atpūta</span><strong>{{ ex.pivot?.rest_seconds ?? ex.rest_seconds }}s</strong>
                                                 </div>
                                             </div>
-
-                                            <div class="exercise-specs">
-                                                <div class="spec-item">
-                                                    <span class="spec-label">Seti:</span>
-                                                    <span class="spec-value">{{ exercise.sets || exercise.pivot?.sets || 3 }}</span>
-                                                </div>
-                                                <div class="spec-item">
-                                                    <span class="spec-label">Reps:</span>
-                                                    <span class="spec-value">{{ exercise.reps || exercise.pivot?.reps || 10 }}</span>
-                                                </div>
-                                                <div v-if="exercise.weight || (exercise.pivot && exercise.pivot.weight)" class="spec-item">
-                                                    <span class="spec-label">Svars:</span>
-                                                    <span class="spec-value">{{ exercise.weight || (exercise.pivot && exercise.pivot.weight) }}kg</span>
-                                                </div>
-
-                                                <div v-if="exercise.rest_time || (exercise.pivot && exercise.pivot.rest_time)" class="spec-item">
-                                                    <span class="spec-label">Atpūta:</span>
-                                                    <span class="spec-value">{{ exercise.rest_time || (exercise.pivot && exercise.pivot.rest_time) }}s</span>
-                                                </div>
-                                            </div>
-
-                                            <div v-if="exercise.notes || exercise.pivot?.notes" class="exercise-notes">
-                                                <span class="notes-label">Piezīmes:</span>
-                                                <p>{{ exercise.notes || exercise.pivot?.notes }}</p>
-                                            </div>
+                                            <div v-if="ex.pivot?.notes ?? ex.notes" class="ex-notes">{{ ex.pivot?.notes ?? ex.notes }}</div>
                                         </div>
                                     </div>
-                                    <div v-else class="rest-day">
-                                        🛌 Atpūtas diena
-                                    </div>
+                                    <div v-else class="rest-day">Atpūtas diena</div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <div class="modal-footer">
-                        <button v-if="isAuthenticated" @click="startRoutineWorkout(selectedRoutine)" class="btn btn-primary">
-                            ▶️ Sākt treniņu
-                        </button>
-
-                        <button v-if="isAuthenticated" @click="editRoutine(selectedRoutine)" class="btn btn-warning">
-                            ✏️ Rediģēt
-                        </button>
-
+                    <div class="modal__foot">
+                        <button v-if="isAuthenticated" @click="startRoutineWorkout(selectedRoutine)" class="btn btn--primary">Sākt treniņu</button>
+                        <button v-if="canEdit(selectedRoutine)" @click="editRoutine(selectedRoutine)" class="btn btn--dark">Rediģēt</button>
                         <button v-if="isAuthenticated"
                                 @click="setAsActiveRoutine(selectedRoutine)"
-                                :class="['btn', selectedRoutine.id === activeRoutine?.id ? 'btn-success' : 'btn-secondary']">
-                            {{ selectedRoutine.id === activeRoutine?.id ? '✅ Aktīvā' : '⭐ Iestatīt kā aktīvo' }}
+                                :class="['btn', selectedRoutine.id === activeRoutine?.id ? 'btn--active' : 'btn--outline']">
+                            {{ selectedRoutine.id === activeRoutine?.id ? '★ Aktīvā' : 'Iestatīt kā aktīvo' }}
                         </button>
-                        <button @click="closeModal" class="btn btn-outline">
-                            Aizvērt
-                        </button>
+                        <button v-if="canDelete(selectedRoutine)" @click="deleteRoutine(selectedRoutine)" class="btn btn--danger">Dzēst</button>
+                        <button @click="closeModal" class="btn btn--outline">Aizvērt</button>
                     </div>
                 </div>
             </div>
         </div>
+
+        <Modal ref="modalRef" />
     </AppLayout>
 </template>
 
-<script setup>
-    import AppLayout from '@/Layouts/AppLayout.vue';
-    import { Head, Link, router } from '@inertiajs/vue3';
-    import { ref, onMounted, onUnmounted, computed } from 'vue';
-    import axios from 'axios';
-
-    const props = defineProps({
-        routines: Array,
-        auth: Object,
-    });
-
-    const activeRoutine = ref(null);
-    const selectedRoutine = ref(null);
-
-    const isAuthenticated = computed(() => {
-        return props.auth && props.auth.user;
-    });
-
-    const dayNames = {
-        1: 'Pirmdiena',
-        2: 'Otrdiena',
-        3: 'Trešdiena',
-        4: 'Ceturtdiena',
-        5: 'Piektdiena',
-        6: 'Sestdiena',
-        7: 'Svētdiena'
-    };
-
-    // Palīgfunkcijas
-    const getDayName = (dayNumber) => {
-        return dayNames[dayNumber] || `Diena ${dayNumber}`;
-    };
-
-    const getExercisesCountForDay = (routine, dayNumber) => {
-        if (!routine.exercises) return 0;
-
-        return routine.exercises.filter(exercise => {
-            return exercise.pivot?.day_number === dayNumber;
-        }).length;
-    };
-
-    const getExercisesForDay = (routine, dayNumber) => {
-        if (!routine.exercises) return [];
-
-        return routine.exercises.filter(exercise => {
-            return exercise.pivot?.day_number === dayNumber;
-        });
-    };
-
-    const getTotalExercisesCount = (routine) => {
-        if (!routine.exercises) return 0;
-
-        // Grupē pēc dienām un saskaita unikālos vingrinājumus
-        const uniqueExerciseIds = new Set();
-        routine.exercises.forEach(exercise => {
-            uniqueExerciseIds.add(exercise.id);
-        });
-
-        return uniqueExerciseIds.size;
-    };
-
-    const editRoutine = (routine) => {
-        if (!isAuthenticated.value) {
-            alert('Lūdzu, pierakstieties, lai rediģētu rutīnas!');
-            return;
-        }
-
-        console.log('Editing routine:', routine.id);
-
-        // Aizveram modālu, ja tas ir atvērts
-        if (selectedRoutine.value?.id === routine.id) {
-            closeModal();
-        }
-
-        // Pārejam uz rediģēšanas lapu
-        router.visit(`/routines/${routine.id}/edit`);
-    };
-
-    onMounted(() => {
-        if (isAuthenticated.value) {
-            const saved = localStorage.getItem('activeRoutine');
-            if (saved) {
-                try {
-                    activeRoutine.value = JSON.parse(saved);
-                } catch (e) {
-                    console.error('Error parsing active routine:', e);
-                    localStorage.removeItem('activeRoutine');
-                }
-            }
-        }
-
-        document.addEventListener('keydown', handleEscape);
-    });
-
-    onUnmounted(() => {
-        document.removeEventListener('keydown', handleEscape);
-    });
-
-    const setAsActiveRoutine = async (routine) => {
-        if (!isAuthenticated.value) {
-            alert('Lūdzu, pierakstieties, lai iestatītu aktīvo rutīnu!');
-            return;
-        }
-
-        try {
-            console.log('Setting active routine:', routine.id, routine.name);
-
-            // 1. Mēģinām saglabāt serverī
-            const response = await axios.post(`/routines/${routine.id}/set-active`);
-            console.log('Server response:', response.data);
-
-            // 2. Iegūstam pilnus rutīnas datus
-            let routineData;
-            if (response.data && response.data.routine) {
-                // Izmantojam servera atbildi
-                routineData = response.data.routine;
-            } else {
-                // Ja serveris neatgriež datus, izmantojam lokālos
-                routineData = {
-                    id: routine.id,
-                    name: routine.name,
-                    description: routine.description || '',
-                    is_public: routine.is_public || false,
-                    exercises_count: routine.exercises?.length || 0,
-                    exercises: (routine.exercises || []).map(ex => ({
-                        id: ex.id,
-                        name: ex.name,
-                        muscle_group: ex.muscle_group || '',
-                        sets: (ex.pivot && ex.pivot.sets) || 3,
-                        reps: (ex.pivot && ex.pivot.reps) || 10,
-                        rest_seconds: (ex.pivot && ex.pivot.rest_seconds) || 60,
-                        day_number: (ex.pivot && ex.pivot.day_number) || 1,
-                        notes: (ex.pivot && ex.pivot.notes) || ''
-                    }))
-                };
-            }
-
-            console.log('Saving to localStorage:', routineData);
-            localStorage.setItem('activeRoutine', JSON.stringify(routineData));
-            activeRoutine.value = routineData;
-
-            // 3. Paziņojam par izmaiņām
-            localStorage.setItem('routineChanged', 'true');
-
-            // 4. Parādām veiksmes ziņojumu
-            alert(`✅ Rutīna "${routine.name}" iestatīta kā aktīvā!`);
-
-            // 5. Aizveram modālu, ja atvērts
-            if (selectedRoutine.value?.id === routine.id) {
-                closeModal();
-            }
-
-        } catch (error) {
-            console.error('Full error details:', error);
-            // ... error handling ...
-        }
-    };
-
-    const clearActiveRoutine = () => {
-        if (!isAuthenticated.value) return;
-
-        localStorage.removeItem('activeRoutine');
-        activeRoutine.value = null;
-        localStorage.setItem('routineChanged', 'true');
-    };
-
-    const viewRoutineDetails = (routine) => {
-        selectedRoutine.value = routine;
-        document.body.style.overflow = 'hidden';
-    };
-
-    const closeModal = () => {
-        selectedRoutine.value = null;
-        document.body.style.overflow = 'auto';
-    };
-
-    const startRoutineWorkout = async (routine) => {
-        if (!isAuthenticated.value) {
-            alert('Lūdzu, pierakstieties, lai sāktu treniņu!');
-            return;
-        }
-
-        try {
-            // 1. Nosakām šodienas dienas numuru
-            const today = new Date();
-            const dayNumber = today.getDay(); // 0-6
-            let todayDayNumber = dayNumber === 0 ? 7 : dayNumber;
-
-            // 2. Filtrējam vingrinājumus šodienai
-            const exercisesForToday = (routine.exercises || [])
-                .filter(exercise => {
-                    const exerciseDay = exercise.pivot?.day_number || exercise.day_number || 1;
-                    return exerciseDay === todayDayNumber;
-                })
-                .map(exercise => ({
-                    id: exercise.id,
-                    name: exercise.name,
-                    muscle_group: exercise.muscle_group || '',
-                    sets: exercise.pivot?.sets || exercise.sets || 3,
-                    reps: exercise.pivot?.reps || exercise.reps || 10,
-                    rest_seconds: exercise.pivot?.rest_seconds || exercise.rest_seconds || 60,
-                    notes: exercise.pivot?.notes || exercise.notes || '',
-                    day_number: exercise.pivot?.day_number || exercise.day_number || 1
-                }));
-
-            console.log('Starting routine workout:', {
-                routineId: routine.id,
-                routineName: routine.name,
-                todayDayNumber: todayDayNumber,
-                exercisesCount: exercisesForToday.length
-            });
-
-            if (exercisesForToday.length === 0) {
-                const dayNames = ['Svētdiena', 'Pirmdiena', 'Otrdiena', 'Trešdiena', 'Ceturtdiena', 'Piektdiena', 'Sestdiena'];
-                alert(`Šodien (${dayNames[todayDayNumber]}) nav vingrinājumu rutīnā "${routine.name}".`);
-                return;
-            }
-
-            // 3. Izveidojam brīvo treniņu
-            const response = await axios.post('/workout/free/start', {
-                name: routine.name + ' - ' + new Date().toLocaleDateString('lv-LV'),
-                routine_id: routine.id,
-                exercises: exercisesForToday
-            });
-
-            if (response.data && response.data.success) {
-                if (response.data.session_id) {
-                    router.visit(`/workout/free?session=${response.data.session_id}`);
-                } else {
-                    router.visit('/workout/free');
-                }
-            } else {
-                throw new Error(response.data?.message || 'Unknown error');
-            }
-
-        } catch (error) {
-            console.error('Error starting routine workout:', error);
-
-            let errorMessage = 'Kļūda sākot treniņu: ';
-            if (error.response?.data?.message) {
-                errorMessage += error.response.data.message;
-            } else if (error.message) {
-                errorMessage += error.message;
-            }
-
-            alert(errorMessage);
-        }
-    };
-
-    const handleEscape = (e) => {
-        if (e.key === 'Escape' && selectedRoutine.value) {
-            closeModal();
-        }
-    };
-</script>
-
 <style scoped>
-    .week-schedule {
-        display: grid;
-        grid-template-columns: repeat(7, 1fr);
-        gap: 0.25rem;
-        margin-bottom: 1rem;
-        background: #f8fafc;
-        border-radius: 0.5rem;
-        padding: 0.5rem;
-        border: 1px solid #e2e8f0;
-    }
-
-    .day-summary {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        padding: 0.25rem;
-        border-radius: 0.375rem;
-        background: white;
-        font-size: 0.75rem;
-    }
-
-    .day-name {
-        color: #64748b;
-        font-weight: 500;
-        margin-bottom: 0.125rem;
-    }
-
-    .day-exercises {
-        background: #3b82f6;
-        color: white;
-        width: 1.5rem;
-        height: 1.5rem;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: 600;
-        font-size: 0.625rem;
-    }
-
-    .week-schedule-detailed {
-        display: flex;
-        flex-direction: column;
-        gap: 1.5rem;
-    }
-
-    .day-plan {
-        background: #f8fafc;
-        border-radius: 0.75rem;
-        padding: 1.25rem;
-        border: 1px solid #e2e8f0;
-    }
-
-    .day-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 1rem;
-        padding-bottom: 0.75rem;
-        border-bottom: 1px solid #e2e8f0;
-    }
-
-    .edit-btn {
-        background: #f59e0b;
-        color: white;
-        flex: 1;
-        min-width: 100px;
-        padding: 0.625rem 1rem;
-        border-radius: 0.625rem;
-        font-size: 0.875rem;
-        font-weight: 600;
-        border: none;
-        cursor: pointer;
-        transition: all 0.2s;
-        text-align: center;
-    }
-
-        .edit-btn:hover {
-            background: #d97706;
-            transform: translateY(-1px);
-        }
-
-    .delete-btn {
-        background: #ef4444;
-        color: white;
-        flex: 1;
-        min-width: 100px;
-        padding: 0.625rem 1rem;
-        border-radius: 0.625rem;
-        font-size: 0.875rem;
-        font-weight: 600;
-        border: none;
-        cursor: pointer;
-        transition: all 0.2s;
-        text-align: center;
-    }
-
-        .delete-btn:hover {
-            background: #dc2626;
-            transform: translateY(-1px);
-        }
-
-    .delete-modal {
-        max-width: 500px;
-    }
-
-    .warning-text {
-        color: #dc2626;
-        font-weight: 600;
-        margin-top: 1rem;
-    }
-
-    .btn-danger {
-        background: #dc2626;
-        color: white;
-    }
-
-        .btn-danger:hover {
-            background: #b91c1c;
-        }
-
-    .btn-warning {
-        background: #f59e0b;
-        color: white;
-    }
-
-        .btn-warning:hover {
-            background: #d97706;
-        }
-
-    .auth-required-message {
-        color: #64748b;
-        font-size: 0.875rem;
-        padding: 0.75rem 1.5rem;
-        background: #f1f5f9;
-        border-radius: 0.75rem;
-        border: 1px solid #e2e8f0;
-    }
-
-    .auth-message {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 1rem;
-    }
-
-    .login-btn {
-        background: #3b82f6;
-        color: white;
-        padding: 0.75rem 1.5rem;
-        border-radius: 0.75rem;
-        text-decoration: none;
-        font-weight: 600;
-        transition: all 0.2s;
-    }
-
-        .login-btn:hover {
-            background: #2563eb;
-            transform: translateY(-1px);
-        }
-
-    @media (max-width: 768px) {
-        .routine-actions {
-            flex-direction: column;
-        }
-
-        .view-btn,
-        .edit-btn,
-        .delete-btn,
-        .start-btn,
-        .set-active-btn {
-            width: 100%;
-        }
-    }
-
-    .day-header h4 {
-        font-size: 1rem;
-        font-weight: 600;
-        color: #1e293b;
-        margin: 0;
-    }
-
-    .day-count {
-        background: #3b82f6;
-        color: white;
-        padding: 0.25rem 0.75rem;
-        border-radius: 9999px;
-        font-size: 0.75rem;
-        font-weight: 600;
-    }
-
-    .exercises-list {
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-    }
-
-    .rest-day {
-        text-align: center;
-        padding: 1.5rem;
-        color: #94a3b8;
-        font-style: italic;
-        background: white;
-        border-radius: 0.5rem;
-        border: 1px dashed #e2e8f0;
-    }
-
-    @media (max-width: 768px) {
-        .week-schedule {
-            grid-template-columns: repeat(4, 1fr);
-        }
-
-        .routine-content {
-            padding: 1rem;
-        }
-
-        .routine-description {
-            font-size: 0.875rem;
-        }
-
-        .day-name {
-            font-size: 0.625rem;
-        }
-
-        .day-exercises {
-            width: 1.25rem;
-            height: 1.25rem;
-            font-size: 0.5rem;
-        }
-    }
-
-    @media (max-width: 480px) {
-        .week-schedule {
-            grid-template-columns: repeat(3, 1fr);
-        }
-
-        .day-plan {
-            padding: 1rem;
-        }
-
-        .day-header {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 0.5rem;
-        }
-
-        .day-count {
-            align-self: flex-start;
-        }
-    }
-
-    /* Base Styles */
-    .routines-page {
+    .page {
         padding: 2rem 1rem;
-        background: #f8fafc;
+        background: #f3f4f6;
         min-height: 100vh;
+        color: #111827;
     }
 
-    .routines-container {
+    .container {
         max-width: 1200px;
         margin: 0 auto;
     }
 
-    .routines-content {
-        background: white;
-        border-radius: 1rem;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-        padding: 2rem;
-    }
-
-    /* Header */
-    .routines-header {
+    /* Galvene */
+    .page-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
         margin-bottom: 2rem;
-        padding-bottom: 1.5rem;
-        border-bottom: 2px solid #e2e8f0;
+        padding-bottom: 1.25rem;
+        border-bottom: 2px solid #e5e7eb;
     }
 
-        .routines-header h1 {
-            font-size: 2rem;
+        .page-header h1 {
+            font-size: 1.875rem;
             font-weight: 700;
-            color: #1e293b;
+            color: #111827;
             margin: 0;
         }
 
-    .create-button {
-        background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%);
-        color: white;
-        padding: 0.75rem 1.5rem;
-        border-radius: 0.75rem;
-        font-weight: 600;
-        text-decoration: none;
-        transition: all 0.3s;
-        border: none;
-        cursor: pointer;
+    .header-right {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
     }
 
-        .create-button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(234, 88, 12, 0.3);
-        }
-
-    /* Active Routine Banner */
-    .active-routine-banner {
-        background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-        color: white;
-        border-radius: 1rem;
-        padding: 1.5rem;
-        margin-bottom: 2rem;
+    /* Admin nozīmīte galvenē */
+    .admin-badge {
+        background: #111827;
+        color: #fbbf24;
+        font-size: 0.75rem;
+        font-weight: 700;
+        padding: 0.3rem 0.75rem;
+        border-radius: 9999px;
+        border: 1px solid #374151;
     }
 
-    .active-routine-content {
+    .auth-notice {
+        font-size: 0.875rem;
+        color: #6b7280;
+        background: #fff;
+        padding: 0.6rem 1rem;
+        border-radius: 0.5rem;
+        border: 1px solid #e5e7eb;
+    }
+
+    /* Aktīvās josla */
+    .active-banner {
+        background: linear-gradient(135deg, #ff8c42 0%, #e65c00 100%);
+        border-radius: 0.875rem;
+        padding: 1.25rem 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 4px 14px rgba(230,92,0,0.25);
+    }
+
+    .active-banner__inner {
         display: flex;
         justify-content: space-between;
         align-items: center;
         gap: 1rem;
     }
 
-    .routine-info h3 {
-        font-size: 1rem;
-        font-weight: 600;
-        margin-bottom: 0.5rem;
-        opacity: 0.9;
+    .active-banner__label {
+        font-size: 0.75rem;
+        color: rgba(255,255,255,0.75);
+        margin: 0 0 0.25rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
     }
 
-    .routine-info h4 {
-        font-size: 1.5rem;
+    .active-banner__name {
+        font-size: 1.25rem;
         font-weight: 700;
-        margin-bottom: 0.75rem;
+        color: #fff;
+        margin: 0 0 0.6rem;
     }
 
-    .routine-details {
+    .active-banner__tags {
         display: flex;
-        gap: 1rem;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    /* Sadaļas uzraksts */
+    .section-label {
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #9ca3af;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 0.875rem;
+    }
+
+    /* Režģis — šķirtājs aizņem visu platumu */
+    .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 1.25rem;
+    }
+
+    .grid-divider {
+        grid-column: 1 / -1;
+        display: flex;
         align-items: center;
-        font-size: 0.875rem;
+        gap: 0.75rem;
+        margin: 0.5rem 0;
     }
 
-    .public-tag {
-        background: rgba(255, 255, 255, 0.2);
-        padding: 0.25rem 0.75rem;
-        border-radius: 9999px;
-    }
-
-    .remove-active-btn {
-        background: rgba(255, 255, 255, 0.15);
-        color: white;
-        border: 1px solid rgba(255, 255, 255, 0.3);
-        padding: 0.5rem 1.25rem;
-        border-radius: 0.5rem;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s;
-    }
-
-        .remove-active-btn:hover {
-            background: rgba(255, 255, 255, 0.25);
+        .grid-divider span {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #9ca3af;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            white-space: nowrap;
         }
 
-    /* Grid */
-    .routines-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-        gap: 1.5rem;
-    }
+        .grid-divider::before,
+        .grid-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: #e5e7eb;
+        }
 
-    /* Routine Cards */
-    .routine-card {
-        background: white;
-        border: 2px solid #e2e8f0;
+    /* Karte */
+    .card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
         border-radius: 1rem;
         padding: 1.5rem;
-        transition: all 0.3s;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        transition: transform 0.2s, box-shadow 0.2s;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.06);
     }
 
-        .routine-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 12px 24px rgba(0, 0, 0, 0.1);
-            border-color: #cbd5e1;
+        .card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.1);
         }
 
-    .active-routine {
-        border-color: #3b82f6;
-        background: linear-gradient(to bottom, #f0f9ff, white);
+    /* Svešas rutīnas — nedaudz blāvākas */
+    .card--other {
+        background: #fafafa;
+    }
+
+    /* Aktīvā — oranža josla augšā */
+    .card--active {
+        border-color: #ff8c42;
         position: relative;
     }
 
-        .active-routine::before {
+        .card--active::before {
             content: '';
             position: absolute;
             top: 0;
             left: 0;
             right: 0;
-            height: 4px;
-            background: linear-gradient(90deg, #3b82f6, #60a5fa);
+            height: 3px;
+            background: linear-gradient(90deg, #ff8c42, #e65c00);
             border-radius: 1rem 1rem 0 0;
         }
 
-    .routine-header {
+    .card__head {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
-        margin-bottom: 1rem;
+        margin-bottom: 0.75rem;
+        gap: 0.5rem;
     }
 
-    .routine-card h2 {
-        font-size: 1.25rem;
-        font-weight: 700;
-        color: #1e293b;
-        margin: 0;
-        flex: 1;
+        .card__head h2 {
+            font-size: 1.125rem;
+            font-weight: 700;
+            color: #111827;
+            margin: 0;
+            flex: 1;
+        }
+
+    .card__badges {
+        display: flex;
+        gap: 0.35rem;
+        flex-wrap: wrap;
+        align-items: flex-start;
     }
 
-    .active-badge {
-        background: #10b981;
-        color: white;
-        padding: 0.25rem 0.75rem;
-        border-radius: 9999px;
-        font-size: 0.75rem;
-        font-weight: 600;
-    }
-
-    .routine-description {
-        color: #64748b;
-        font-size: 0.9375rem;
-        line-height: 1.6;
-        margin: 0 0 1.25rem 0;
+    .card__desc {
+        color: #6b7280;
+        font-size: 0.9rem;
+        line-height: 1.5;
+        margin: 0 0 1rem;
         display: -webkit-box;
         -webkit-line-clamp: 3;
         -webkit-box-orient: vertical;
         overflow: hidden;
     }
 
-    .routine-meta {
+    .card__meta {
         display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 1.5rem;
+        gap: 0.5rem;
+        margin-bottom: 1.25rem;
         padding-bottom: 1.25rem;
-        border-bottom: 1px solid #f1f5f9;
-    }
-
-    .exercise-count {
-        color: #64748b;
-        font-size: 0.875rem;
-        font-weight: 500;
-    }
-
-    .routine-meta .public-tag {
-        background: #dcfce7;
-        color: #166534;
-        padding: 0.25rem 0.75rem;
-        border-radius: 9999px;
-        font-size: 0.75rem;
-        font-weight: 600;
-    }
-
-    /* Buttons */
-    .routine-actions {
-        display: flex;
-        gap: 0.75rem;
+        border-bottom: 1px solid #f3f4f6;
         flex-wrap: wrap;
     }
 
-    .view-btn,
-    .start-btn,
-    .set-active-btn {
-        flex: 1;
-        min-width: 100px;
-        padding: 0.625rem 1rem;
-        border-radius: 0.625rem;
-        font-size: 0.875rem;
+    .card__actions {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    /* Tagetes */
+    .tag {
+        background: #f3f4f6;
+        color: #6b7280;
+        padding: 0.2rem 0.65rem;
+        border-radius: 9999px;
+        font-size: 0.75rem;
+        font-weight: 500;
+        border: 1px solid #e5e7eb;
+    }
+
+    .tag--green {
+        background: #f0fdf4;
+        color: #16a34a;
+        border-color: #bbf7d0;
+    }
+
+    .tag--orange {
+        background: #fff7ed;
+        color: #e65c00;
+        border-color: #fed7aa;
+    }
+
+    .tag--white {
+        background: rgba(255,255,255,0.25);
+        color: #fff;
+        border-color: rgba(255,255,255,0.3);
+    }
+
+    /* Nozīmītes */
+    .badge {
+        padding: 0.2rem 0.65rem;
+        border-radius: 9999px;
+        font-size: 0.75rem;
         font-weight: 600;
-        border: none;
-        cursor: pointer;
-        transition: all 0.2s;
-        text-align: center;
+        white-space: nowrap;
     }
 
-    .view-btn {
-        background: #f8fafc;
-        color: #475569;
-        border: 2px solid #e2e8f0;
+    .badge--orange {
+        background: #fff7ed;
+        color: #e65c00;
+        border: 1px solid #fed7aa;
     }
 
-        .view-btn:hover {
-            background: #f1f5f9;
-            border-color: #cbd5e1;
-        }
-
-    .start-btn {
-        background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%);
-        color: white;
+    .badge--green {
+        background: #f0fdf4;
+        color: #16a34a;
+        border: 1px solid #bbf7d0;
     }
 
-        .start-btn:hover {
-            background: linear-gradient(135deg, #c2410c 0%, #9a3412 100%);
-            transform: translateY(-1px);
-        }
-
-    .set-active-btn {
-        background: #3b82f6;
-        color: white;
+    .badge--grey {
+        background: #f9fafb;
+        color: #6b7280;
+        border: 1px solid #e5e7eb;
     }
 
-        .set-active-btn:hover {
-            background: #2563eb;
-        }
-
-        .set-active-btn.is-active {
-            background: #10b981;
-        }
-
-    /* Empty State */
-    .empty-state {
+    /* Tukšs stāvoklis */
+    .empty {
         grid-column: 1 / -1;
         text-align: center;
         padding: 4rem 2rem;
-        color: #64748b;
+        color: #9ca3af;
+        background: #fff;
+        border-radius: 1rem;
+        border: 1px solid #e5e7eb;
     }
 
-    .empty-icon {
+    .empty__icon {
         font-size: 4rem;
-        margin-bottom: 1.5rem;
-        opacity: 0.5;
+        margin-bottom: 1rem;
+        opacity: 0.4;
     }
 
-    .empty-state p {
-        font-size: 1.125rem;
-        margin-bottom: 1.5rem;
+    .empty p {
+        font-size: 1rem;
+        margin-bottom: 1.25rem;
+        color: #6b7280;
     }
 
-    /* Modal */
-    .modal-overlay {
+    .empty__auth {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    /* Pogas */
+    .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.55rem 1rem;
+        border-radius: 0.5rem;
+        font-weight: 600;
+        font-size: 0.85rem;
+        border: none;
+        cursor: pointer;
+        text-decoration: none;
+        transition: all 0.2s;
+        white-space: nowrap;
+    }
+
+    .btn--primary {
+        background: #ff8c42;
+        color: #fff;
+    }
+
+        .btn--primary:hover {
+            background: #e65c00;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(230,92,0,0.3);
+        }
+
+    .btn--dark {
+        background: #111827;
+        color: #fff;
+    }
+
+        .btn--dark:hover {
+            background: #1f2937;
+        }
+
+    .btn--active {
+        background: #fff7ed;
+        color: #e65c00;
+        border: 1px solid #fed7aa;
+    }
+
+        .btn--active:hover {
+            background: #ffedd5;
+        }
+
+    .btn--outline {
+        background: #fff;
+        color: #374151;
+        border: 1px solid #d1d5db;
+    }
+
+        .btn--outline:hover {
+            background: #f9fafb;
+            border-color: #9ca3af;
+        }
+
+    .btn--ghost {
+        background: rgba(255,255,255,0.2);
+        color: #fff;
+        border: 1px solid rgba(255,255,255,0.35);
+    }
+
+        .btn--ghost:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+    .btn--danger {
+        background: #fee2e2;
+        color: #dc2626;
+        border: 1px solid #fecaca;
+    }
+
+        .btn--danger:hover {
+            background: #dc2626;
+            color: #fff;
+        }
+
+    /* Detaļu modāls */
+    .overlay {
         position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.7);
+        inset: 0;
+        background: rgba(0,0,0,0.5);
         display: flex;
         align-items: center;
         justify-content: center;
-        z-index: 1000;
+        z-index: 50;
         padding: 1rem;
-        animation: fadeIn 0.3s ease;
+        animation: fadeIn 0.2s ease;
     }
 
     @keyframes fadeIn {
@@ -1028,20 +796,21 @@
     }
 
     .modal {
-        background: white;
+        background: #fff;
+        border: 1px solid #e5e7eb;
         border-radius: 1rem;
         width: 100%;
-        max-width: 700px;
-        max-height: 85vh;
+        max-width: 680px;
+        max-height: 88vh;
         overflow-y: auto;
-        box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
-        animation: slideUp 0.3s ease;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.15);
+        animation: slideUp 0.25s ease;
     }
 
     @keyframes slideUp {
         from {
             opacity: 0;
-            transform: translateY(20px);
+            transform: translateY(16px);
         }
 
         to {
@@ -1050,368 +819,279 @@
         }
     }
 
-    .modal-header {
+    .modal__head {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 1.5rem 2rem;
-        border-bottom: 2px solid #f1f5f9;
+        padding: 1.5rem;
+        border-bottom: 1px solid #f3f4f6;
+        position: sticky;
+        top: 0;
+        background: #fff;
+        z-index: 1;
     }
 
-        .modal-header h2 {
-            font-size: 1.75rem;
+        .modal__head h2 {
+            font-size: 1.5rem;
             font-weight: 700;
-            color: #1e293b;
+            color: #111827;
             margin: 0;
         }
 
-    .modal-close {
+    .modal__close {
         background: none;
         border: none;
-        font-size: 1.75rem;
-        color: #94a3b8;
+        color: #9ca3af;
+        font-size: 1.4rem;
         cursor: pointer;
-        padding: 0.25rem;
+        padding: 0.25rem 0.5rem;
         border-radius: 0.375rem;
+        transition: color 0.2s, background 0.2s;
         line-height: 1;
-        transition: all 0.2s;
     }
 
-        .modal-close:hover {
-            color: #64748b;
-            background: #f1f5f9;
+        .modal__close:hover {
+            color: #111827;
+            background: #f3f4f6;
         }
 
-    .modal-body {
-        padding: 2rem;
+    .modal__body {
+        padding: 1.5rem;
     }
 
-    .modal-section {
-        margin-bottom: 2rem;
+    .modal__section {
+        margin-bottom: 1.75rem;
     }
 
-        .modal-section h3 {
-            font-size: 1.125rem;
-            font-weight: 600;
-            color: #334155;
-            margin-bottom: 1rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
+        .modal__section h3 {
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: #e65c00;
+            margin-bottom: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
         }
 
-        .modal-section p {
-            color: #475569;
+        .modal__section > p {
+            color: #6b7280;
             line-height: 1.6;
             margin: 0;
         }
 
     .info-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        gap: 1rem;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 0.75rem;
     }
 
     .info-item {
-        display: flex;
-        justify-content: space-between;
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.625rem;
         padding: 0.75rem;
-        background: #f8fafc;
-        border-radius: 0.75rem;
-        border: 1px solid #e2e8f0;
-    }
-
-    .info-label {
-        color: #64748b;
-        font-weight: 500;
-    }
-
-    .info-value {
-        font-weight: 600;
-        color: #1e293b;
-    }
-
-        .info-value.public {
-            color: #166534;
-            background: #dcfce7;
-            padding: 0.25rem 0.75rem;
-            border-radius: 9999px;
-            font-size: 0.875rem;
-        }
-
-        .info-value.private {
-            color: #475569;
-            background: #f1f5f9;
-            padding: 0.25rem 0.75rem;
-            border-radius: 9999px;
-            font-size: 0.875rem;
-        }
-
-        .info-value.active {
-            color: #ea580c;
-            background: #ffedd5;
-            padding: 0.25rem 0.75rem;
-            border-radius: 9999px;
-            font-size: 0.875rem;
-        }
-
-    /* Exercises List */
-    .exercises-list {
         display: flex;
         flex-direction: column;
-        gap: 1rem;
+        gap: 0.4rem;
     }
 
-    .exercise-card {
-        background: #f8fafc;
-        border: 1px solid #e2e8f0;
-        border-radius: 0.75rem;
-        padding: 1.25rem;
-    }
-
-    .exercise-header {
-        display: flex;
-        align-items: flex-start;
-        gap: 1rem;
-        margin-bottom: 1rem;
-    }
-
-    .exercise-number {
-        width: 2rem;
-        height: 2rem;
-        background: #3b82f6;
-        color: white;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: 700;
-        font-size: 0.875rem;
-        flex-shrink: 0;
-    }
-
-    .exercise-title {
-        flex: 1;
-    }
-
-        .exercise-title h4 {
-            font-size: 1rem;
-            font-weight: 600;
-            color: #1e293b;
-            margin: 0 0 0.5rem 0;
-        }
-
-    .muscle-badge {
-        background: #e2e8f0;
-        color: #475569;
-        padding: 0.25rem 0.75rem;
-        border-radius: 9999px;
+    .info-item__label {
         font-size: 0.75rem;
+        color: #9ca3af;
         font-weight: 500;
     }
 
-    .exercise-specs {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-        gap: 0.75rem;
-        margin-bottom: 1rem;
+    .info-item__val {
+        font-weight: 700;
+        color: #111827;
+        font-size: 1.125rem;
     }
 
-    .spec-item {
+    .schedule {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .day {
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.75rem;
+        padding: 1rem;
+    }
+
+    .day__head {
         display: flex;
         justify-content: space-between;
-        padding: 0.5rem 0.75rem;
-        background: white;
-        border-radius: 0.5rem;
-        border: 1px solid #e2e8f0;
+        align-items: center;
+        margin-bottom: 0.75rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid #e5e7eb;
     }
 
-    .spec-label {
-        color: #64748b;
-        font-size: 0.875rem;
+        .day__head h4 {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #374151;
+            margin: 0;
+        }
+
+    .ex-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
     }
 
-    .spec-value {
-        font-weight: 600;
-        color: #1e293b;
-        font-size: 0.875rem;
-    }
-
-    .exercise-notes {
-        padding: 0.75rem;
-        background: white;
-        border-radius: 0.5rem;
-        border: 1px solid #e2e8f0;
-        font-size: 0.875rem;
-    }
-
-    .notes-label {
-        display: block;
-        color: #64748b;
-        font-weight: 500;
-        margin-bottom: 0.25rem;
-        font-size: 0.75rem;
-    }
-
-    .exercise-notes p {
-        color: #475569;
-        margin: 0;
-        line-height: 1.4;
-    }
-
-    .no-exercises {
+    .rest-day {
         text-align: center;
-        padding: 2rem;
-        color: #94a3b8;
-        background: #f8fafc;
-        border-radius: 0.75rem;
-        border: 2px dashed #e2e8f0;
-        font-size: 0.9375rem;
+        padding: 0.75rem;
+        color: #9ca3af;
+        font-style: italic;
+        font-size: 0.8rem;
+        border: 1px dashed #e5e7eb;
+        border-radius: 0.5rem;
+        background: #fff;
     }
 
-    /* Modal Footer */
-    .modal-footer {
-        padding: 1.5rem 2rem;
-        border-top: 2px solid #f1f5f9;
+    .ex-card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.625rem;
+        padding: 0.875rem;
+    }
+
+    .ex-card__head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 0.625rem;
+        gap: 0.5rem;
+    }
+
+        .ex-card__head h5 {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #111827;
+            margin: 0;
+            flex: 1;
+        }
+
+    .specs {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.4rem;
+        margin-bottom: 0.4rem;
+    }
+
+    .spec {
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.375rem;
+        padding: 0.35rem 0.5rem;
+        display: flex;
+        flex-direction: column;
+    }
+
+        .spec span {
+            font-size: 0.65rem;
+            color: #9ca3af;
+        }
+
+        .spec strong {
+            font-size: 0.875rem;
+            color: #ff8c42;
+            font-weight: 700;
+        }
+
+    .ex-notes {
+        font-size: 0.78rem;
+        color: #6b7280;
+        padding: 0.375rem 0.5rem;
+        background: #f9fafb;
+        border-radius: 0.375rem;
+        border: 1px solid #e5e7eb;
+        font-style: italic;
+    }
+
+    .modal__foot {
+        padding: 1.25rem 1.5rem;
+        border-top: 1px solid #f3f4f6;
         display: flex;
         gap: 0.75rem;
         flex-wrap: wrap;
+        position: sticky;
+        bottom: 0;
+        background: #fff;
     }
 
-    .btn {
-        flex: 1;
-        min-width: 120px;
-        padding: 0.75rem 1.5rem;
-        border-radius: 0.75rem;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s;
-        border: none;
-        text-align: center;
-    }
-
-    .btn-primary {
-        background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%);
-        color: white;
-    }
-
-        .btn-primary:hover {
-            background: linear-gradient(135deg, #c2410c 0%, #9a3412 100%);
-            transform: translateY(-1px);
-        }
-
-    .btn-secondary {
-        background: #3b82f6;
-        color: white;
-    }
-
-        .btn-secondary:hover {
-            background: #2563eb;
-        }
-
-    .btn-success {
-        background: #10b981;
-        color: white;
-    }
-
-    .btn-outline {
-        background: transparent;
-        color: #64748b;
-        border: 2px solid #e2e8f0;
-    }
-
-        .btn-outline:hover {
-            background: #f8fafc;
-        }
-
-    /* Scrollbar */
     .modal::-webkit-scrollbar {
-        width: 6px;
+        width: 5px;
     }
 
     .modal::-webkit-scrollbar-track {
-        background: #f1f5f9;
+        background: #f9fafb;
     }
 
     .modal::-webkit-scrollbar-thumb {
-        background: #cbd5e1;
+        background: #d1d5db;
         border-radius: 3px;
     }
 
-        .modal::-webkit-scrollbar-thumb:hover {
-            background: #94a3b8;
-        }
-
-    /* Responsive */
+    /* Mobilais */
     @media (max-width: 768px) {
-        .routines-content {
-            padding: 1.5rem;
-        }
-
-        .routines-header {
+        .page-header {
             flex-direction: column;
             align-items: flex-start;
             gap: 1rem;
         }
 
-        .routines-grid {
+        .grid {
             grid-template-columns: 1fr;
         }
 
-        .active-routine-content {
+        .active-banner__inner {
             flex-direction: column;
             align-items: flex-start;
-            gap: 1rem;
         }
 
-        .routine-actions {
+        .card__actions {
             flex-direction: column;
         }
 
-        .view-btn,
-        .start-btn,
-        .set-active-btn {
-            width: 100%;
-        }
+            .card__actions .btn {
+                width: 100%;
+            }
 
-        .modal {
-            margin: 0.5rem;
-            max-height: 90vh;
-        }
-
-        .modal-header,
-        .modal-body {
-            padding: 1.25rem;
-        }
-
-        .info-grid {
-            grid-template-columns: 1fr;
-        }
-
-        .exercise-specs {
-            grid-template-columns: 1fr;
-        }
-
-        .modal-footer {
+        .modal__foot {
             flex-direction: column;
         }
 
-        .btn {
-            width: 100%;
+            .modal__foot .btn {
+                width: 100%;
+            }
+
+        .specs {
+            grid-template-columns: 1fr 1fr;
         }
     }
 
     @media (max-width: 480px) {
-        .routines-page {
+        .page {
             padding: 1rem 0.5rem;
         }
 
-        .routines-content {
+        .modal {
+            margin: 0.25rem;
+            border-radius: 0.75rem;
+        }
+
+        .modal__head, .modal__body, .modal__foot {
             padding: 1rem;
         }
 
-        .routine-card {
-            padding: 1.25rem;
+        .day__head {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.4rem;
         }
     }
 </style>

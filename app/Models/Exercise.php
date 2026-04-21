@@ -12,6 +12,7 @@ class Exercise extends Model
         'name',
         'description',
         'muscle_group',
+        'type',
         'equipment',
         'instructions',
         'difficulty',

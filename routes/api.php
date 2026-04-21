@@ -43,11 +43,13 @@ Route::get('/workout-session/{id}', function ($id) {
             'session_exercise_id' => $ex->id,
             'name' => $ex->exercise->name,
             'muscle_group' => $ex->exercise->muscle_group,
+            'type'                => $ex->exercise->type ?? 'strength',
             'sets_planned' => $ex->sets_planned,
             'reps_planned' => $ex->reps_planned,
             'sets_completed' => $ex->sets_completed,
             'reps_completed' => $ex->reps_completed ?? [],
             'weights_used' => $ex->weights_used ?? [],
+            'durations_completed' => $ex->durations_completed ?? [],
         ]),
     ]);
 });

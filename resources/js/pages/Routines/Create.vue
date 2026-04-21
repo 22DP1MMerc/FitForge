@@ -4,98 +4,58 @@ import { Head, router } from '@inertiajs/vue3';
 import { ref } from 'vue';
 
 const props = defineProps({
-    exercises: {
-        type: Array,
-        required: true,
-        default: () => []
-    },
-    weekDays: {
-        type: Array,
-        required: true,
-        default: () => []
-    }
+    exercises: { type: Array,  required: true, default: () => [] },
+    weekDays:  { type: Array,  required: true, default: () => [] }
 });
 
-const cancel = () => {
-    router.get(route('routines.index'));
-};
+// Atiet atpakaļ uz rutīnu sarakstu
+const cancel = () => router.get(route('routines.index'));
 
+// Formas sākuma stāvoklis — 7 dienas, tukšas
 const form = ref({
-    name: '',
+    name:        '',
     description: '',
-    is_public: false,
+    is_public:   false,
     days: [
-        {
-            day_number: 1,
-            day_name: 'Pirmdiena',
-            exercises: []
-        },
-        {
-            day_number: 2,
-            day_name: 'Otrdiena',
-            exercises: []
-        },
-        {
-            day_number: 3,
-            day_name: 'Trešdiena',
-            exercises: []
-        },
-        {
-            day_number: 4,
-            day_name: 'Ceturtdiena',
-            exercises: []
-        },
-        {
-            day_number: 5,
-            day_name: 'Piektdiena',
-            exercises: []
-        },
-        {
-            day_number: 6,
-            day_name: 'Sestdiena',
-            exercises: []
-        },
-        {
-            day_number: 7,
-            day_name: 'Svētdiena',
-            exercises: []
-        }
+        { day_number: 1, day_name: 'Pirmdiena',  exercises: [] },
+        { day_number: 2, day_name: 'Otrdiena',   exercises: [] },
+        { day_number: 3, day_name: 'Trešdiena',  exercises: [] },
+        { day_number: 4, day_name: 'Ceturtdiena', exercises: [] },
+        { day_number: 5, day_name: 'Piektdiena', exercises: [] },
+        { day_number: 6, day_name: 'Sestdiena',  exercises: [] },
+        { day_number: 7, day_name: 'Svētdiena',  exercises: [] },
     ]
 });
 
+// Pievieno tukšu vingrinājuma rindu konkrētai dienai
 const addExerciseToDay = (day) => {
-    day.exercises.push({
-        id: null,
-        sets: 3,
-        reps: 10,
-        rest_seconds: 60,
-        notes: ''
-    });
+    day.exercises.push({ id: null, sets: 3, reps: 10, rest_seconds: 60, notes: '' });
 };
 
+// Noņem vingrinājumu no dienas
 const removeExerciseFromDay = (day, index) => {
     day.exercises.splice(index, 1);
 };
 
+// Sagatavo datus un sūta uz serveri
 const submit = () => {
-    const exercises = form.value.days
-        .flatMap(day =>
-            day.exercises
-                .filter(ex => ex.id)
-                .map(ex => ({
-                    id: ex.id,
-                    day_number: day.day_number,
-                    sets: ex.sets,
-                    reps: ex.reps,
-                    rest_seconds: ex.rest_seconds,
-                    notes: ex.notes
-                }))
-        );
+    const exercises = form.value.days.flatMap(day =>
+        day.exercises
+            .filter(ex => ex.id)
+            .map(ex => ({
+                id:           ex.id,
+                day_number:   day.day_number,
+                sets:         ex.sets,
+                reps:         ex.reps,
+                rest_seconds: ex.rest_seconds,
+                notes:        ex.notes
+            }))
+    );
 
     router.post(route('routines.store'), {
-        name: form.value.name,
+        name:        form.value.name,
         description: form.value.description,
-        is_public: form.value.is_public,
+        is_public:   form.value.is_public,
         exercises
     });
 };
@@ -107,7 +67,7 @@ const submit = () => {
 
         <div class="create-routine-page">
             <div class="container">
-                <!-- Header Section -->
+
                 <div class="page-header">
                     <div class="header-badge">
                         <span class="badge-icon">💪</span>
@@ -117,7 +77,8 @@ const submit = () => {
                 </div>
 
                 <form @submit.prevent="submit" class="routine-form">
-                    <!-- Routine Details -->
+
+                    <!-- Pamatinformācija -->
                     <div class="form-section">
                         <div class="section-header">
                             <div class="section-icon">📋</div>
@@ -129,21 +90,16 @@ const submit = () => {
                                 <label for="routine-name" class="form-label">
                                     Rutīnas nosaukums <span class="required-star">*</span>
                                 </label>
-                                <input id="routine-name"
-                                       v-model="form.name"
-                                       type="text"
+                                <input id="routine-name" v-model="form.name" type="text"
                                        class="form-input"
-                                       placeholder="piem., Pilna ķermeņa spēka treniņš"
-                                       required />
+                                       placeholder="piem., Pilna ķermeņa spēka treniņš" required />
                             </div>
 
                             <div class="form-group full-width">
                                 <label for="routine-description" class="form-label">Apraksts</label>
-                                <textarea id="routine-description"
-                                          v-model="form.description"
-                                          rows="4"
-                                          class="form-textarea"
-                                          placeholder="Apraksti savus treniņa mērķus, preferēto intensitāti vai citas svarīgas detaļas..."></textarea>
+                                <textarea id="routine-description" v-model="form.description"
+                                          rows="4" class="form-textarea"
+                                          placeholder="Apraksti savus treniņa mērķus..."></textarea>
                             </div>
 
                             <div class="form-group checkbox-group">
@@ -156,7 +112,7 @@ const submit = () => {
                         </div>
                     </div>
 
-                    <!-- Weekly Plan -->
+                    <!-- Nedēļas plāns — katrai dienai sava kartiņa -->
                     <div class="form-section">
                         <div class="section-header">
                             <div class="section-icon">📅</div>
@@ -195,33 +151,24 @@ const submit = () => {
                                         <div class="exercise-stats-grid">
                                             <div class="stat-field">
                                                 <label class="exercise-label">Seti</label>
-                                                <input type="number"
-                                                       v-model.number="exercise.sets"
-                                                       min="1"
-                                                       class="stat-input"
-                                                       required />
+                                                <input type="number" v-model.number="exercise.sets"
+                                                       min="1" class="stat-input" required />
                                             </div>
                                             <div class="stat-field">
                                                 <label class="exercise-label">Atkārtojumi</label>
-                                                <input type="number"
-                                                       v-model.number="exercise.reps"
-                                                       min="1"
-                                                       class="stat-input"
-                                                       required />
+                                                <input type="number" v-model.number="exercise.reps"
+                                                       min="1" class="stat-input" required />
                                             </div>
                                             <div class="stat-field">
-                                                <label class="exercise-label">Atpūta (sekundes)</label>
-                                                <input type="number"
-                                                       v-model.number="exercise.rest_seconds"
-                                                       min="0"
-                                                       class="stat-input" />
+                                                <label class="exercise-label">Atpūta (sek.)</label>
+                                                <input type="number" v-model.number="exercise.rest_seconds"
+                                                       min="0" class="stat-input" />
                                             </div>
                                         </div>
 
                                         <div class="exercise-field">
                                             <label class="exercise-label">Piezīmes</label>
-                                            <textarea v-model="exercise.notes"
-                                                      rows="2"
+                                            <textarea v-model="exercise.notes" rows="2"
                                                       class="exercise-textarea"
                                                       placeholder="Padomi, tehnika vai variācijas..."></textarea>
                                         </div>
@@ -235,11 +182,8 @@ const submit = () => {
                         </div>
                     </div>
 
-                    <!-- Form Actions -->
                     <div class="form-actions">
-                        <button type="button" @click="cancel" class="btn-cancel">
-                            Atcelt
-                        </button>
+                        <button type="button" @click="cancel" class="btn-cancel">Atcelt</button>
                         <button type="submit" class="btn-submit">
                             <span class="btn-submit-icon">✓</span>
                             Saglabāt rutīnu
@@ -269,7 +213,6 @@ const submit = () => {
         margin: 0 auto;
     }
 
-    /* Page Header */
     .page-header {
         text-align: center;
         margin-bottom: 2.5rem;
@@ -284,7 +227,7 @@ const submit = () => {
         background: linear-gradient(135deg, #f97316, #ea580c);
         border-radius: 50%;
         margin-bottom: 1rem;
-        box-shadow: 0 10px 25px rgba(249, 115, 22, 0.3);
+        box-shadow: 0 10px 25px rgba(249,115,22,0.3);
     }
 
     .badge-icon {
@@ -306,7 +249,6 @@ const submit = () => {
         color: #64748b;
     }
 
-    /* Form Sections */
     .routine-form {
         display: flex;
         flex-direction: column;
@@ -316,13 +258,13 @@ const submit = () => {
     .form-section {
         background: white;
         border-radius: 1rem;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
         overflow: hidden;
-        transition: transform 0.2s, box-shadow 0.2s;
+        transition: box-shadow 0.2s;
     }
 
         .form-section:hover {
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
         }
 
     .section-header {
@@ -345,7 +287,6 @@ const submit = () => {
         margin: 0;
     }
 
-    /* Form Grid */
     .form-grid {
         padding: 2rem;
         display: grid;
@@ -375,8 +316,7 @@ const submit = () => {
         color: #ef4444;
     }
 
-    .form-input,
-    .form-textarea {
+    .form-input, .form-textarea {
         padding: 0.75rem 1rem;
         border: 2px solid #e2e8f0;
         border-radius: 0.5rem;
@@ -385,18 +325,16 @@ const submit = () => {
         font-family: inherit;
     }
 
-        .form-input:focus,
-        .form-textarea:focus {
+        .form-input:focus, .form-textarea:focus {
             outline: none;
             border-color: #f97316;
-            box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1);
+            box-shadow: 0 0 0 3px rgba(249,115,22,0.1);
         }
 
     .form-textarea {
         resize: vertical;
     }
 
-    /* Checkbox */
     .checkbox-group {
         grid-column: span 2;
     }
@@ -425,7 +363,6 @@ const submit = () => {
         color: #64748b;
     }
 
-    /* Days Grid */
     .days-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
@@ -443,7 +380,7 @@ const submit = () => {
 
         .day-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
 
     .day-header {
@@ -479,7 +416,7 @@ const submit = () => {
 
         .btn-add-exercise:hover {
             transform: translateY(-1px);
-            box-shadow: 0 4px 8px rgba(249, 115, 22, 0.3);
+            box-shadow: 0 4px 8px rgba(249,115,22,0.3);
         }
 
     .btn-icon {
@@ -487,7 +424,6 @@ const submit = () => {
         font-weight: bold;
     }
 
-    /* Exercises List */
     .exercises-list {
         padding: 1rem;
         max-height: 600px;
@@ -505,7 +441,7 @@ const submit = () => {
 
         .exercise-item:hover {
             border-color: #f97316;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
         }
 
     .exercise-header {
@@ -539,7 +475,6 @@ const submit = () => {
 
         .btn-remove:hover {
             background: #fecaca;
-            transform: scale(0.95);
         }
 
     .exercise-field {
@@ -556,9 +491,7 @@ const submit = () => {
         letter-spacing: 0.05em;
     }
 
-    .exercise-select,
-    .stat-input,
-    .exercise-textarea {
+    .exercise-select, .stat-input, .exercise-textarea {
         width: 100%;
         padding: 0.5rem 0.75rem;
         border: 1px solid #cbd5e1;
@@ -568,12 +501,10 @@ const submit = () => {
         font-family: inherit;
     }
 
-        .exercise-select:focus,
-        .stat-input:focus,
-        .exercise-textarea:focus {
+        .exercise-select:focus, .stat-input:focus, .exercise-textarea:focus {
             outline: none;
             border-color: #f97316;
-            box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.1);
+            box-shadow: 0 0 0 2px rgba(249,115,22,0.1);
         }
 
     .exercise-stats-grid {
@@ -603,7 +534,6 @@ const submit = () => {
         font-size: 0.875rem;
     }
 
-    /* Form Actions */
     .form-actions {
         display: flex;
         justify-content: flex-end;
@@ -611,11 +541,10 @@ const submit = () => {
         padding: 1.5rem 2rem;
         background: white;
         border-radius: 1rem;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
     }
 
-    .btn-cancel,
-    .btn-submit {
+    .btn-cancel, .btn-submit {
         padding: 0.75rem 1.5rem;
         border-radius: 0.5rem;
         font-size: 0.875rem;
@@ -645,7 +574,7 @@ const submit = () => {
 
         .btn-submit:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(249, 115, 22, 0.4);
+            box-shadow: 0 4px 12px rgba(249,115,22,0.4);
         }
 
     .btn-submit-icon {
@@ -653,18 +582,13 @@ const submit = () => {
         font-weight: bold;
     }
 
-    /* Responsive */
     @media (max-width: 768px) {
         .form-grid {
             grid-template-columns: 1fr;
             padding: 1.5rem;
         }
 
-        .form-group.full-width {
-            grid-column: span 1;
-        }
-
-        .checkbox-group {
+        .form-group.full-width, .checkbox-group {
             grid-column: span 1;
         }
 
@@ -681,8 +605,7 @@ const submit = () => {
             flex-direction: column;
         }
 
-        .btn-cancel,
-        .btn-submit {
+        .btn-cancel, .btn-submit {
             width: 100%;
             justify-content: center;
         }
