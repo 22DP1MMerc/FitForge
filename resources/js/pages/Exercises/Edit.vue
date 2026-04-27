@@ -13,22 +13,19 @@ const props = defineProps<{
     exercise:         any;
     muscleGroups:     string[];
     equipmentOptions: string[];
-    difficulties:     string[];
     types:            string[];
 }>();
 
+// Tikai lauki kas ir DB
 const form = useForm({
     name:         props.exercise.name,
     description:  props.exercise.description  || '',
     muscle_group: props.exercise.muscle_group || '',
     equipment:    props.exercise.equipment    || '',
     type:         props.exercise.type         || 'strength',
-    difficulty:   props.exercise.difficulty   || '',
-    instructions: props.exercise.instructions || '',
     image:        props.exercise.image        || '',
 });
 
-// Vai muskuļu grupa / aprīkojums ir ārpus saraksta
 const customMuscleGroup = ref(!props.muscleGroups.includes(props.exercise.muscle_group));
 const customEquipment   = ref(!props.equipmentOptions.includes(props.exercise.equipment));
 
@@ -38,7 +35,7 @@ const submitForm = () => {
     });
 };
 
-// Dzēš no rediģēšanas lapas ar apstiprinājumu
+// Dzēš ar apstiprinājumu
 const deleteExercise = async () => {
     const confirmed = await confirm({
         title:       'Dzēst vingrinājumu?',
@@ -67,7 +64,6 @@ const deleteExercise = async () => {
                 <div class="card">
                     <form @submit.prevent="submitForm">
 
-                        <!-- Pamatinfo -->
                         <section class="section">
                             <h2>Pamatinformācija</h2>
 
@@ -95,9 +91,7 @@ const deleteExercise = async () => {
                                 <div class="form-group">
                                     <label>Muskuļu grupa *</label>
                                     <div v-if="!customMuscleGroup" class="input-with-toggle">
-                                        <select v-model="form.muscle_group"
-                                                required
-                                                class="input"
+                                        <select v-model="form.muscle_group" required class="input"
                                                 :class="{ 'input--error': form.errors.muscle_group }">
                                             <option value="">Izvēlies grupu</option>
                                             <option v-for="g in muscleGroups" :key="g" :value="g">{{ g }}</option>
@@ -107,11 +101,8 @@ const deleteExercise = async () => {
                                         </button>
                                     </div>
                                     <div v-else class="input-with-toggle">
-                                        <input v-model="form.muscle_group"
-                                               type="text"
-                                               required
-                                               class="input"
-                                               placeholder="Ievadi muskuļu grupu" />
+                                        <input v-model="form.muscle_group" type="text" required
+                                               class="input" placeholder="Ievadi muskuļu grupu" />
                                         <button type="button" @click="customMuscleGroup = false" class="toggle-btn">
                                             Saraksts
                                         </button>
@@ -123,9 +114,7 @@ const deleteExercise = async () => {
                                 <div class="form-group">
                                     <label>Aprīkojums *</label>
                                     <div v-if="!customEquipment" class="input-with-toggle">
-                                        <select v-model="form.equipment"
-                                                required
-                                                class="input"
+                                        <select v-model="form.equipment" required class="input"
                                                 :class="{ 'input--error': form.errors.equipment }">
                                             <option value="">Izvēlies aprīkojumu</option>
                                             <option v-for="e in equipmentOptions" :key="e" :value="e">{{ e }}</option>
@@ -135,11 +124,8 @@ const deleteExercise = async () => {
                                         </button>
                                     </div>
                                     <div v-else class="input-with-toggle">
-                                        <input v-model="form.equipment"
-                                               type="text"
-                                               required
-                                               class="input"
-                                               placeholder="Ievadi aprīkojumu" />
+                                        <input v-model="form.equipment" type="text" required
+                                               class="input" placeholder="Ievadi aprīkojumu" />
                                         <button type="button" @click="customEquipment = false" class="toggle-btn">
                                             Saraksts
                                         </button>
@@ -148,27 +134,19 @@ const deleteExercise = async () => {
                                 </div>
                             </div>
 
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label>Tips</label>
-                                    <select v-model="form.type" class="input">
-                                        <option value="strength">Spēka</option>
-                                        <option value="cardio">Kardio</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label>Grūtums</label>
-                                    <select v-model="form.difficulty" class="input">
-                                        <option value="">Nav norādīts</option>
-                                        <option v-for="d in difficulties" :key="d" :value="d">{{ d }}</option>
-                                    </select>
-                                </div>
+                            <!-- Tips -->
+                            <div class="form-group">
+                                <label>Tips</label>
+                                <select v-model="form.type" class="input">
+                                    <option value="strength">Spēka</option>
+                                    <option value="cardio">Kardio</option>
+                                </select>
                             </div>
                         </section>
 
-                        <!-- Bilde un instrukcijas -->
+                        <!-- Bilde -->
                         <section class="section">
-                            <h2>Papildinformācija</h2>
+                            <h2>Bilde</h2>
 
                             <div class="form-group">
                                 <label>Bildes URL</label>
@@ -176,38 +154,24 @@ const deleteExercise = async () => {
                                        type="url"
                                        class="input"
                                        :class="{ 'input--error': form.errors.image }"
-                                       placeholder="https://images.unsplash.com/..." />
+                                       placeholder="https://..." />
                                 <p v-if="form.errors.image" class="err">{{ form.errors.image }}</p>
+                                <!-- Priekšskatījums reāllaikā -->
                                 <div v-if="form.image" class="img-preview">
                                     <img :src="form.image" alt="Priekšskatījums" />
                                 </div>
-                            </div>
-
-                            <div class="form-group">
-                                <label>Instrukcijas</label>
-                                <textarea v-model="form.instructions"
-                                          rows="5"
-                                          class="input"
-                                          placeholder="Soli pa solim instrukcijas..."></textarea>
                             </div>
                         </section>
 
                         <!-- Pogas -->
                         <div class="form-actions">
-                            <button type="submit"
-                                    class="btn btn--primary"
-                                    :disabled="form.processing">
+                            <button type="submit" class="btn btn--primary" :disabled="form.processing">
                                 <span v-if="form.processing">Saglabā...</span>
-                                <span v-else>💾 Saglabāt izmaiņas</span>
+                                <span v-else>💾 Saglabāt</span>
                             </button>
-                            <Link :href="route('exercises.index')" class="btn btn--outline">
-                            Atcelt
-                            </Link>
-                            <!-- Dzēšana — atsevišķi no saglabāšanas -->
-                            <button type="button"
-                                    @click="deleteExercise"
-                                    class="btn btn--danger">
-                                🗑️ Dzēst vingrinājumu
+                            <Link :href="route('exercises.index')" class="btn btn--outline">Atcelt</Link>
+                            <button type="button" @click="deleteExercise" class="btn btn--danger">
+                                🗑️ Dzēst
                             </button>
                         </div>
 
@@ -359,6 +323,7 @@ const deleteExercise = async () => {
             border-color: #9ca3af;
         }
 
+    /* Bildes priekšskatījums */
     .img-preview {
         margin-top: 0.75rem;
         border-radius: 0.5rem;
@@ -374,7 +339,6 @@ const deleteExercise = async () => {
             object-fit: cover;
         }
 
-    /* Pogas — saglabāt pa kreisi, dzēst pa labi */
     .form-actions {
         display: flex;
         gap: 1rem;
@@ -422,7 +386,7 @@ const deleteExercise = async () => {
             background: #f9fafb;
         }
 
-    /* Dzēšana — atdalīta ar auto margin */
+    /* Dzēšanas poga labajā pusē */
     .btn--danger {
         background: #fee2e2;
         color: #dc2626;

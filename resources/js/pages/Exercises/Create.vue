@@ -8,22 +8,20 @@ import { ref } from 'vue';
 const props = defineProps<{
     muscleGroups:     string[];
     equipmentOptions: string[];
-    difficulties:     string[];
     types:            string[];
 }>();
 
+// Tikai lauki kas ir DB — bez difficulty un instructions
 const form = useForm({
     name:         '',
     description:  '',
     muscle_group: '',
     equipment:    '',
     type:         'strength',
-    difficulty:   '',
-    instructions: '',
     image:        '',
 });
 
-// Ļauj ievadīt jaunu muskuļu grupu vai aprīkojumu ja nav sarakstā
+// Pielāgots ievads ja sarakstā nav vajadzīgā opcija
 const customMuscleGroup = ref(false);
 const customEquipment   = ref(false);
 
@@ -49,7 +47,6 @@ const submitForm = () => {
                 <div class="card">
                     <form @submit.prevent="submitForm">
 
-                        <!-- Pamatinfo -->
                         <section class="section">
                             <h2>Pamatinformācija</h2>
 
@@ -79,24 +76,23 @@ const submitForm = () => {
                                 <div class="form-group">
                                     <label>Muskuļu grupa *</label>
                                     <div v-if="!customMuscleGroup" class="input-with-toggle">
-                                        <select v-model="form.muscle_group"
-                                                required
-                                                class="input"
+                                        <select v-model="form.muscle_group" required class="input"
                                                 :class="{ 'input--error': form.errors.muscle_group }">
                                             <option value="">Izvēlies grupu</option>
                                             <option v-for="g in muscleGroups" :key="g" :value="g">{{ g }}</option>
                                         </select>
-                                        <button type="button" @click="customMuscleGroup = true; form.muscle_group = ''" class="toggle-btn">
+                                        <button type="button"
+                                                @click="customMuscleGroup = true; form.muscle_group = ''"
+                                                class="toggle-btn">
                                             + Jauna
                                         </button>
                                     </div>
                                     <div v-else class="input-with-toggle">
-                                        <input v-model="form.muscle_group"
-                                               type="text"
-                                               required
-                                               class="input"
-                                               placeholder="Ievadi muskuļu grupu" />
-                                        <button type="button" @click="customMuscleGroup = false; form.muscle_group = ''" class="toggle-btn">
+                                        <input v-model="form.muscle_group" type="text" required
+                                               class="input" placeholder="Ievadi muskuļu grupu" />
+                                        <button type="button"
+                                                @click="customMuscleGroup = false; form.muscle_group = ''"
+                                                class="toggle-btn">
                                             Saraksts
                                         </button>
                                     </div>
@@ -107,24 +103,23 @@ const submitForm = () => {
                                 <div class="form-group">
                                     <label>Aprīkojums *</label>
                                     <div v-if="!customEquipment" class="input-with-toggle">
-                                        <select v-model="form.equipment"
-                                                required
-                                                class="input"
+                                        <select v-model="form.equipment" required class="input"
                                                 :class="{ 'input--error': form.errors.equipment }">
                                             <option value="">Izvēlies aprīkojumu</option>
                                             <option v-for="e in equipmentOptions" :key="e" :value="e">{{ e }}</option>
                                         </select>
-                                        <button type="button" @click="customEquipment = true; form.equipment = ''" class="toggle-btn">
+                                        <button type="button"
+                                                @click="customEquipment = true; form.equipment = ''"
+                                                class="toggle-btn">
                                             + Jauns
                                         </button>
                                     </div>
                                     <div v-else class="input-with-toggle">
-                                        <input v-model="form.equipment"
-                                               type="text"
-                                               required
-                                               class="input"
-                                               placeholder="Ievadi aprīkojumu" />
-                                        <button type="button" @click="customEquipment = false; form.equipment = ''" class="toggle-btn">
+                                        <input v-model="form.equipment" type="text" required
+                                               class="input" placeholder="Ievadi aprīkojumu" />
+                                        <button type="button"
+                                                @click="customEquipment = false; form.equipment = ''"
+                                                class="toggle-btn">
                                             Saraksts
                                         </button>
                                     </div>
@@ -132,30 +127,19 @@ const submitForm = () => {
                                 </div>
                             </div>
 
-                            <div class="form-row">
-                                <!-- Tips -->
-                                <div class="form-group">
-                                    <label>Tips</label>
-                                    <select v-model="form.type" class="input">
-                                        <option value="strength">Spēka</option>
-                                        <option value="cardio">Kardio</option>
-                                    </select>
-                                </div>
-
-                                <!-- Grūtums -->
-                                <div class="form-group">
-                                    <label>Grūtums</label>
-                                    <select v-model="form.difficulty" class="input">
-                                        <option value="">Nav norādīts</option>
-                                        <option v-for="d in difficulties" :key="d" :value="d">{{ d }}</option>
-                                    </select>
-                                </div>
+                            <!-- Tips -->
+                            <div class="form-group">
+                                <label>Tips</label>
+                                <select v-model="form.type" class="input">
+                                    <option value="strength">Spēka</option>
+                                    <option value="cardio">Kardio</option>
+                                </select>
                             </div>
                         </section>
 
-                        <!-- Bilde un instrukcijas -->
+                        <!-- Bilde -->
                         <section class="section">
-                            <h2>Papildinformācija</h2>
+                            <h2>Bilde</h2>
 
                             <div class="form-group">
                                 <label>Bildes URL</label>
@@ -163,34 +147,21 @@ const submitForm = () => {
                                        type="url"
                                        class="input"
                                        :class="{ 'input--error': form.errors.image }"
-                                       placeholder="https://images.unsplash.com/..." />
+                                       placeholder="https://..." />
                                 <p v-if="form.errors.image" class="err">{{ form.errors.image }}</p>
-                                <!-- Priekšskatījums -->
+                                <!-- Reāllaika priekšskatījums -->
                                 <div v-if="form.image" class="img-preview">
                                     <img :src="form.image" alt="Priekšskatījums" />
                                 </div>
                             </div>
-
-                            <div class="form-group">
-                                <label>Instrukcijas</label>
-                                <textarea v-model="form.instructions"
-                                          rows="5"
-                                          class="input"
-                                          placeholder="Soli pa solim instrukcijas..."></textarea>
-                            </div>
                         </section>
 
-                        <!-- Pogas -->
                         <div class="form-actions">
-                            <button type="submit"
-                                    class="btn btn--primary"
-                                    :disabled="form.processing">
+                            <button type="submit" class="btn btn--primary" :disabled="form.processing">
                                 <span v-if="form.processing">Saglabā...</span>
                                 <span v-else>💾 Pievienot vingrinājumu</span>
                             </button>
-                            <Link :href="route('exercises.index')" class="btn btn--outline">
-                            Atcelt
-                            </Link>
+                            <Link :href="route('exercises.index')" class="btn btn--outline">Atcelt</Link>
                         </div>
 
                     </form>
@@ -254,7 +225,7 @@ const submitForm = () => {
     }
 
         .section h2 {
-            font-size: 1.1rem;
+            font-size: 0.85rem;
             font-weight: 700;
             color: #ff8c42;
             margin-bottom: 1.25rem;
@@ -262,7 +233,6 @@ const submitForm = () => {
             border-bottom: 1px solid #f3f4f6;
             text-transform: uppercase;
             letter-spacing: 0.04em;
-            font-size: 0.85rem;
         }
 
     .form-group {
@@ -313,7 +283,6 @@ const submitForm = () => {
         margin-top: 0.25rem;
     }
 
-    /* Izvēlne ar "jauns" pogu blakus */
     .input-with-toggle {
         display: flex;
         gap: 0.5rem;
@@ -341,7 +310,6 @@ const submitForm = () => {
             border-color: #9ca3af;
         }
 
-    /* Bildes priekšskatījums */
     .img-preview {
         margin-top: 0.75rem;
         border-radius: 0.5rem;

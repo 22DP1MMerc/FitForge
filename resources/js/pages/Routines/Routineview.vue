@@ -104,8 +104,18 @@ onMounted(() => {
     if (isAuthenticated.value) {
         const saved = localStorage.getItem('activeRoutine');
         if (saved) {
-            try { activeRoutine.value = JSON.parse(saved); }
-            catch { localStorage.removeItem('activeRoutine'); }
+            try {
+                const parsed = JSON.parse(saved);
+                // Pārbauda vai saglabātā rutīna pieder šim lietotājam
+                if (parsed?.user_id === props.auth?.user?.id) {
+                    activeRoutine.value = parsed;
+                } else {
+                    // Svešs lietotājs — notīram cache
+                    localStorage.removeItem('activeRoutine');
+                }
+            } catch {
+                localStorage.removeItem('activeRoutine');
+            }
         }
     }
     document.addEventListener('keydown', handleEscape);
