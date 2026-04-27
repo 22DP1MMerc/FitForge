@@ -2,8 +2,8 @@
 
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
-import Modal from '@/Components/Modal.vue';
-import { useModal } from '@/Composables/useModal';
+import Modal from '@/components/Modal.vue';
+import { useModal } from '@/composables/useModal';
 import { Head, Link, useForm, router } from '@inertiajs/vue3';
 import { ref } from 'vue';
 
