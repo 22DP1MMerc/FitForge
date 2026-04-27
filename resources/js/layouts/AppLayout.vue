@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import Navbar from '@/Components/Navbar.vue';
-import Foot from '@/Components/Foot.vue';
+import Navbar from '@/components/Navbar.vue';
+import Foot from '@/components/Foot.vue';
 
 interface Props {
     title?: string;
