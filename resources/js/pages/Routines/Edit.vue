@@ -188,7 +188,7 @@
 </template>
 
 <script setup>
-    import AppLayout from '@/Layouts/AppLayout.vue';
+    import AppLayout from '@/layouts/AppLayout.vue';
     import { Head, Link, useForm } from '@inertiajs/vue3';
     import { ref, computed, onMounted } from 'vue';
 
