@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { router } from '@inertiajs/vue3';
-import AppLayout from '@/Layouts/AppLayout.vue';
+import AppLayout from '@/layouts/AppLayout.vue';
 import axios from 'axios';
-import Modal from '@/Components/Modal.vue';
-import { useModal } from '@/Composables/useModal';
+import Modal from '@/components/Modal.vue';
+import { useModal } from '@/composables/useModal';
 
 const { modalRef, confirm, alert, success, error } = useModal();
 

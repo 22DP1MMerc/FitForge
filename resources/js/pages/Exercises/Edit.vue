@@ -1,7 +1,7 @@
 <!-- resources/js/Pages/Exercises/Edit.vue -->
 
 <script setup lang="ts">
-import AppLayout from '@/Layouts/AppLayout.vue';
+import AppLayout from '@/layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
 import { useModal } from '@/Composables/useModal';
 import { Head, Link, useForm, router } from '@inertiajs/vue3';
