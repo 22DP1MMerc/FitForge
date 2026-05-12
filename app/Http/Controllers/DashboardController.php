@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Http\Controllers;
 
 use App\Models\WorkoutLog;
@@ -17,6 +16,7 @@ class DashboardController extends Controller
     {
         $user = Auth::user();
 
+        // ja ir aktīvs treniņš, rāda to
         $activeWorkout = WorkoutSession::where('user_id', $user->id)
             ->where('status', 'active')
             ->with(['routine', 'exercises.exercise'])
@@ -75,7 +75,9 @@ class DashboardController extends Controller
 
     private function getStats($user): array
     {
-        $currentStreak  = $this->calculateCurrentStreak($user);
+        $currentStreak = $this->calculateCurrentStreak($user);
+
+        // šīs nedēļas treniņu skaits
         $weeklyWorkouts = WorkoutLog::where('user_id', $user->id)
             ->whereBetween('completed_at', [
                 Carbon::now()->startOfWeek(),
@@ -87,6 +89,7 @@ class DashboardController extends Controller
         $personalRecords = PersonalRecord::where('user_id', $user->id)->count();
         $goalsAchieved   = Goal::where('user_id', $user->id)->where('completed', true)->count();
 
+        // katras dienas progress šajā nedēļā
         $weeklyProgress = [];
         for ($i = 0; $i < 7; $i++) {
             $day    = Carbon::now()->startOfWeek()->addDays($i);
@@ -107,6 +110,7 @@ class DashboardController extends Controller
         ];
     }
 
+    // sērija aprēķināta pa nedēļām
     private function calculateCurrentStreak($user): int
     {
         $weeks = WorkoutLog::where('user_id', $user->id)
@@ -148,23 +152,18 @@ class DashboardController extends Controller
 
         if (!$routine) return null;
 
-        $duration = 0;
-        foreach ($routine->exercises as $exercise) {
-            $sets        = $exercise->pivot->sets ?? 3;
-            $restSeconds = $exercise->pivot->rest_seconds ?? 60;
-            $duration   += ($sets * 45) + ($sets * $restSeconds);
-        }
+        // 90 sek uz setu
+        $totalSeconds = $routine->exercises->sum(fn($e) => ($e->pivot->sets ?? 3) * 90);
 
         return [
             'id'        => $routine->id,
             'name'      => $routine->name,
-            'duration'  => ceil($duration / 60) . ' min',
+            'duration'  => ceil($totalSeconds / 60) . ' min',
             'exercises' => $routine->exercises->map(fn($e) => [
-                'id'           => $e->id,
-                'name'         => $e->name,
-                'sets'         => $e->pivot->sets ?? 3,
-                'reps'         => $e->pivot->reps ?? 10,
-                'rest_seconds' => $e->pivot->rest_seconds ?? 60,
+                'id'   => $e->id,
+                'name' => $e->name,
+                'sets' => $e->pivot->sets ?? 3,
+                'reps' => $e->pivot->reps ?? 10,
             ])->toArray(),
         ];
     }
@@ -197,6 +196,7 @@ class DashboardController extends Controller
             ];
         }
 
+        // jaunākie 3 kopā
         return array_slice($activities, 0, 3);
     }
 
@@ -206,7 +206,7 @@ class DashboardController extends Controller
         if (!$activeRoutine) return null;
 
         $activeRoutine->load(['exercises' => fn($q) =>
-            $q->withPivot(['day_number', 'sets', 'reps', 'rest_seconds', 'notes'])
+            $q->withPivot(['day_number', 'sets', 'reps', 'notes'])
               ->orderBy('exercise_routine.day_number')
         ]);
 
@@ -225,15 +225,7 @@ class DashboardController extends Controller
                 'day_number'   => $e->pivot->day_number,
                 'sets'         => $e->pivot->sets,
                 'reps'         => $e->pivot->reps,
-                'rest_seconds' => $e->pivot->rest_seconds,
                 'notes'        => $e->pivot->notes,
-                'pivot'        => [
-                    'day_number'   => $e->pivot->day_number,
-                    'sets'         => $e->pivot->sets,
-                    'reps'         => $e->pivot->reps,
-                    'rest_seconds' => $e->pivot->rest_seconds,
-                    'notes'        => $e->pivot->notes,
-                ],
             ])->toArray(),
         ];
     }
@@ -283,10 +275,10 @@ class DashboardController extends Controller
     {
         $weekStart  = Carbon::now()->startOfWeek();
         $dayMapping = [
-            'Monday' => 'Pirmdiena',   'Tuesday' => 'Otrdiena',
-            'Wednesday' => 'Trešdiena', 'Thursday' => 'Ceturtdiena',
-            'Friday' => 'Piektdiena',  'Saturday' => 'Sestdiena',
-            'Sunday' => 'Svētdiena',
+            'Monday'    => 'Pirmdiena',  'Tuesday'  => 'Otrdiena',
+            'Wednesday' => 'Trešdiena',  'Thursday' => 'Ceturtdiena',
+            'Friday'    => 'Piektdiena', 'Saturday' => 'Sestdiena',
+            'Sunday'    => 'Svētdiena',
         ];
 
         $weightStats = array_fill_keys(array_values($dayMapping), ['totalWeight' => 0, 'exercises' => 0]);

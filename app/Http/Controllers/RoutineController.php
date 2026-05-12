@@ -1,91 +1,70 @@
 <?php
-
 namespace App\Http\Controllers;
 
 use App\Models\Routine;
-use App\Models\Exercise; 
+use App\Models\Exercise;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
-use Illuminate\Support\Facades\Log;
 
 class RoutineController extends Controller
 {
+    // viena rutīna — publiska vai lietotāja pašu
     public function show(Routine $routine)
     {
-        // Add authorization check here too
         $user = auth()->user();
-        
-        // Check if routine is accessible
+
         if (!$routine->is_public && (!$user || $routine->user_id !== $user->id)) {
-            abort(403, 'Unauthorized access to this routine.');
+            abort(403);
         }
-        
+
         $routine->load(['exercises' => function ($query) {
             $query->orderBy('exercise_routine.day_number');
         }]);
 
         return inertia('Routines/Show', [
-            'routine' => $routine,
-            'weekDays' => [
-                1 => ['id' => 1, 'name' => 'Monday'],
-                2 => ['id' => 2, 'name' => 'Tuesday'],
-                3 => ['id' => 3, 'name' => 'Wednesday'],
-                4 => ['id' => 4, 'name' => 'Thursday'],
-                5 => ['id' => 5, 'name' => 'Friday'],
-                6 => ['id' => 6, 'name' => 'Saturday'],
-                7 => ['id' => 7, 'name' => 'Sunday']
-            ]
+            'routine'  => $routine,
+            'weekDays' => $this->weekDays(),
         ]);
     }
 
+    // jauna rutīna — forma
     public function create()
     {
         return inertia('Routines/Create', [
             'exercises' => Exercise::all(),
-            'weekDays' => [
-                ['id' => 1, 'name' => 'Monday'],
-                ['id' => 2, 'name' => 'Tuesday'],
-                ['id' => 3, 'name' => 'Wednesday'],
-                ['id' => 4, 'name' => 'Thursday'],
-                ['id' => 5, 'name' => 'Friday'],
-                ['id' => 6, 'name' => 'Saturday'],
-                ['id' => 7, 'name' => 'Sunday']
-            ]
+            'weekDays'  => $this->weekDays(),
         ]);
     }
 
+    // saglabā jaunu rutīnu
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'is_public' => 'boolean',
-            'exercises' => 'required|array|min:1',
-            'exercises.*.id' => 'required|exists:exercises,id',
-            'exercises.*.day_number' => 'required|integer|min:1|max:7',
-            'exercises.*.sets' => 'required|integer|min:1',
-            'exercises.*.reps' => 'required|integer|min:1',
-            'exercises.*.rest_seconds' => 'nullable|integer|min:0',
-            'exercises.*.notes' => 'nullable|string',
+            'name'                     => 'required|string|max:255',
+            'description'              => 'nullable|string',
+            'is_public'                => 'boolean',
+            'exercises'                => 'required|array|min:1',
+            'exercises.*.id'           => 'required|exists:exercises,id',
+            'exercises.*.day_number'   => 'required|integer|min:1|max:7',
+            'exercises.*.sets'         => 'required|integer|min:1',
+            'exercises.*.reps'         => 'required|integer|min:1',
+            'exercises.*.notes'        => 'nullable|string',
         ]);
 
-        // Create routine through the user relationship
         $routine = $request->user()->routines()->create([
-            'name' => $validated['name'],
+            'name'        => $validated['name'],
             'description' => $validated['description'],
-            'is_public' => $validated['is_public'] ?? false,
+            'is_public'   => $validated['is_public'] ?? false,
         ]);
 
-        // Attach exercises
         $routine->exercises()->attach(
             collect($validated['exercises'])
-                ->mapWithKeys(fn ($exercise) => [
-                    $exercise['id'] => [
-                        'day_number' => $exercise['day_number'],
-                        'sets' => $exercise['sets'],
-                        'reps' => $exercise['reps'],
-                        'rest_seconds' => $exercise['rest_seconds'],
-                        'notes' => $exercise['notes'],
+                ->mapWithKeys(fn ($e) => [
+                    $e['id'] => [
+                        'day_number' => $e['day_number'],
+                        'sets'       => $e['sets'],
+                        'reps'       => $e['reps'],
+                        'notes'      => $e['notes'],
                     ]
                 ])
         );
@@ -93,319 +72,240 @@ class RoutineController extends Controller
         return redirect()->route('routines.show', $routine);
     }
 
+    // visas rutīnas — publiskās + lietotāja pašu
     public function index()
     {
         $user = auth()->user();
-        
-        if ($user) {
-            // Logged in users: public routines + their own routines
-            $routines = Routine::with(['user', 'exercises'])
-                ->where(function($query) use ($user) {
-                    $query->where('is_public', true)
-                          ->orWhere('user_id', $user->id);
-                })
-                ->latest()
-                ->get();
-        } else {
-            // Guests: only public routines
-            $routines = Routine::with(['user', 'exercises'])
-                ->where('is_public', true)
-                ->latest()
-                ->get();
-        }
+
+        $routines = Routine::with(['user', 'exercises'])
+            ->where(function ($query) use ($user) {
+                $query->where('is_public', true);
+                if ($user) {
+                    $query->orWhere('user_id', $user->id);
+                }
+            })
+            ->latest()
+            ->get();
 
         return Inertia::render('Routines/Routineview', [
-            'routines' => $routines
+            'routines' => $routines,
         ]);
     }
 
+    // tikai publiskās rutīnas
     public function publicIndex()
     {
         $routines = Routine::where('is_public', true)
             ->with(['user', 'exercises'])
             ->latest()
             ->get();
-            
+
         return Inertia::render('Routines/Public', [
-            'routines' => $routines
-        ]);
-    }
-    
-    // Add this method to show user's own routines only
-    public function myRoutines()
-    {
-        $user = auth()->user();
-        
-        if (!$user) {
-            return redirect()->route('login');
-        }
-        
-        $routines = Routine::with(['user', 'exercises'])
-            ->where('user_id', $user->id)
-            ->latest()
-            ->get();
-            
-        return Inertia::render('Routines/Routineview', [
-            'routines' => $routines
+            'routines' => $routines,
         ]);
     }
 
+    // lietotāja pašu rutīnas
+    public function myRoutines()
+    {
+        $routines = Routine::with(['user', 'exercises'])
+            ->where('user_id', auth()->id())
+            ->latest()
+            ->get();
+
+        return Inertia::render('Routines/Routineview', [
+            'routines' => $routines,
+        ]);
+    }
+
+    // rutīna JSON formātā (API)
     public function getRoutine(Routine $routine)
     {
         $user = auth()->user();
-        
-        // Pārbauda piekļuvi
+
         if ($routine->user_id !== $user->id && !$routine->is_public) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
-        
-        $routine->load(['exercises' => function($query) {
-            $query->withPivot(['day_number', 'sets', 'reps', 'rest_seconds', 'notes']);
+
+        $routine->load(['exercises' => function ($query) {
+            $query->withPivot(['day_number', 'sets', 'reps', 'notes']);
         }]);
-        
+
         return response()->json($routine);
     }
 
-    /**
-     * Set a routine as active for the current user
-     */
+    // iestata aktīvo rutīnu
     public function setActive(Routine $routine)
     {
         $user = auth()->user();
-        
-        if (!$user) {
-            return response()->json(['error' => 'Nav autentificēts'], 401);
-        }
-        
-        // Check access
+
         if ($routine->user_id !== $user->id && !$routine->is_public) {
-            return response()->json([
-                'success' => false,
-                'error' => 'Nav pieejas šai rutīnai'
-            ], 403);
+            return response()->json(['error' => 'Nav pieejas šai rutīnai'], 403);
         }
-        
-        // Save active routine in database (not session)
+
         $user->active_routine_id = $routine->id;
         $user->save();
-        
-        Log::info('RoutineController: Setting active routine - ID: ' . $routine->id . ', User: ' . $user->id);
-        
-        // Load routine with all necessary data for frontend
-        $routine->load(['exercises' => function($query) {
-            $query->withPivot(['day_number', 'sets', 'reps', 'rest_seconds', 'notes'])
+
+        $routine->load(['exercises' => function ($query) {
+            $query->withPivot(['day_number', 'sets', 'reps', 'notes'])
                   ->orderBy('exercise_routine.day_number');
         }]);
-        
-        // Format the response to match frontend expectations
-        $formattedRoutine = [
-            'id' => $routine->id,
-            'name' => $routine->name,
-            'description' => $routine->description,
-            'is_public' => $routine->is_public,
-            'user_id' => $routine->user_id,
-            'exercises_count' => $routine->exercises->count(),
-            'exercises' => $routine->exercises->map(function($exercise) {
-                return [
-                    'id' => $exercise->id,
-                    'name' => $exercise->name,
-                    'muscle_group' => $exercise->muscle_group,
-                    'description' => $exercise->description,
-                    'day_number' => $exercise->pivot->day_number,
-                    'sets' => $exercise->pivot->sets,
-                    'reps' => $exercise->pivot->reps,
-                    'rest_seconds' => $exercise->pivot->rest_seconds,
-                    'notes' => $exercise->pivot->notes,
-                    'pivot' => [
-                        'day_number' => $exercise->pivot->day_number,
-                        'sets' => $exercise->pivot->sets,
-                        'reps' => $exercise->pivot->reps,
-                        'rest_seconds' => $exercise->pivot->rest_seconds,
-                        'notes' => $exercise->pivot->notes
-                    ]
-                ];
-            })->toArray()
-        ];
-        
+
         return response()->json([
             'success' => true,
-            'message' => 'Rutīna iestatīta kā aktīvā',
-            'routine' => $formattedRoutine
+            'routine' => $this->formatRoutine($routine),
         ]);
     }
 
-    /**
-     * Clear the active routine for the current user
-     */
+    // notīra aktīvo rutīnu
     public function clearActive()
     {
         $user = auth()->user();
-        
-        if (!$user) {
-            return response()->json(['error' => 'Not authenticated'], 401);
-        }
-        
-        // Clear active routine from database (not session)
         $user->active_routine_id = null;
         $user->save();
-        
-        Log::info('RoutineController: Clearing active routine for User: ' . $user->id);
-        
-        return response()->json([
-            'success' => true,
-            'message' => 'Aktīvā rutīna notīrīta'
-        ]);
+
+        return response()->json(['success' => true]);
     }
 
-    /**
-     * Get the current user's active routine data
-     */
+    // atgriež pašreizējo aktīvo rutīnu
     public function getActiveRoutine()
     {
         $user = auth()->user();
-        
-        if (!$user) {
-            return response()->json(['error' => 'Not authenticated'], 401);
+        $routine = $user->activeRoutine;
+
+        if (!$routine) {
+            return response()->json(['success' => true, 'active_routine' => null]);
         }
-        
-        $activeRoutine = $user->activeRoutine;
-        
-        if (!$activeRoutine) {
-            return response()->json([
-                'success' => true,
-                'active_routine' => null
-            ]);
-        }
-        
-        // Load routine with exercises
-        $activeRoutine->load(['exercises' => function($query) {
-            $query->withPivot(['day_number', 'sets', 'reps', 'rest_seconds', 'notes'])
+
+        $routine->load(['exercises' => function ($query) {
+            $query->withPivot(['day_number', 'sets', 'reps', 'notes'])
                   ->orderBy('exercise_routine.day_number');
         }]);
-        
-        $formattedRoutine = [
-            'id' => $activeRoutine->id,
-            'name' => $activeRoutine->name,
-            'description' => $activeRoutine->description,
-            'is_public' => $activeRoutine->is_public,
-            'user_id' => $activeRoutine->user_id,
-            'exercises_count' => $activeRoutine->exercises->count(),
-            'exercises' => $activeRoutine->exercises->map(function($exercise) {
-                return [
-                    'id' => $exercise->id,
-                    'name' => $exercise->name,
-                    'muscle_group' => $exercise->muscle_group,
-                    'day_number' => $exercise->pivot->day_number,
-                    'sets' => $exercise->pivot->sets,
-                    'reps' => $exercise->pivot->reps,
-                    'rest_seconds' => $exercise->pivot->rest_seconds,
-                    'notes' => $exercise->pivot->notes,
-                    'pivot' => [
-                        'day_number' => $exercise->pivot->day_number,
-                        'sets' => $exercise->pivot->sets,
-                        'reps' => $exercise->pivot->reps,
-                        'rest_seconds' => $exercise->pivot->rest_seconds,
-                        'notes' => $exercise->pivot->notes
-                    ]
-                ];
-            })->toArray()
-        ];
-        
+
         return response()->json([
-            'success' => true,
-            'active_routine' => $formattedRoutine
+            'success'        => true,
+            'active_routine' => $this->formatRoutine($routine),
         ]);
     }
 
+    // rediģēšanas forma
     public function edit(Routine $routine)
     {
-        // Pārbaudam autorizāciju
         $user = auth()->user();
-        if ($routine->user_id !== $user->id && !$routine->is_public) {
-            abort(403, 'Unauthorized');
+
+        if ($routine->user_id !== $user->id) {
+            abort(403);
         }
-        
-        $routine->load(['exercises' => function($query) {
-            $query->withPivot(['day_number', 'sets', 'reps', 'rest_seconds', 'notes']);
+
+        $routine->load(['exercises' => function ($query) {
+            $query->withPivot(['day_number', 'sets', 'reps', 'notes']);
         }]);
-        
+
         return inertia('Routines/Edit', [
-            'routine' => $routine,
+            'routine'   => $routine,
             'exercises' => Exercise::all(),
-            'weekDays' => [
-                1 => ['id' => 1, 'name' => 'Pirmdiena'],
-                2 => ['id' => 2, 'name' => 'Otrdiena'],
-                3 => ['id' => 3, 'name' => 'Trešdiena'],
-                4 => ['id' => 4, 'name' => 'Ceturtdiena'],
-                5 => ['id' => 5, 'name' => 'Piektdiena'],
-                6 => ['id' => 6, 'name' => 'Sestdiena'],
-                7 => ['id' => 7, 'name' => 'Svētdiena']
-            ]
+            'weekDays'  => $this->weekDays(),
         ]);
     }
 
+    // saglabā izmaiņas
     public function update(Request $request, Routine $routine)
     {
-        // Pārbaudam autorizāciju
         $user = auth()->user();
+
         if ($routine->user_id !== $user->id) {
-            abort(403, 'Unauthorized');
+            abort(403);
         }
-        
+
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'is_public' => 'boolean',
-            'exercises' => 'nullable|array',
-            'exercises.*.id' => 'required|exists:exercises,id',
+            'name'                   => 'required|string|max:255',
+            'description'            => 'nullable|string',
+            'is_public'              => 'boolean',
+            'exercises'              => 'nullable|array',
+            'exercises.*.id'         => 'required|exists:exercises,id',
             'exercises.*.day_number' => 'required|integer|min:1|max:7',
-            'exercises.*.sets' => 'required|integer|min:1',
-            'exercises.*.reps' => 'required|integer|min:1',
-            'exercises.*.rest_seconds' => 'nullable|integer|min:0',
-            'exercises.*.notes' => 'nullable|string',
+            'exercises.*.sets'       => 'required|integer|min:1',
+            'exercises.*.reps'       => 'required|integer|min:1',
+            'exercises.*.notes'      => 'nullable|string',
         ]);
-        
-        // Atjauninām rutīnas pamatinformāciju
+
         $routine->update([
-            'name' => $validated['name'],
+            'name'        => $validated['name'],
             'description' => $validated['description'],
-            'is_public' => $validated['is_public'] ?? false,
+            'is_public'   => $validated['is_public'] ?? false,
         ]);
-        
-        // Ja ir vingrinājumi, atjauninām tos
+
         if (isset($validated['exercises'])) {
             $routine->exercises()->detach();
-            
+
             $routine->exercises()->attach(
                 collect($validated['exercises'])
-                    ->mapWithKeys(fn ($exercise) => [
-                        $exercise['id'] => [
-                            'day_number' => $exercise['day_number'],
-                            'sets' => $exercise['sets'],
-                            'reps' => $exercise['reps'],
-                            'rest_seconds' => $exercise['rest_seconds'],
-                            'notes' => $exercise['notes'],
+                    ->mapWithKeys(fn ($e) => [
+                        $e['id'] => [
+                            'day_number' => $e['day_number'],
+                            'sets'       => $e['sets'],
+                            'reps'       => $e['reps'],
+                            'notes'      => $e['notes'],
                         ]
                     ])
             );
         }
-        
+
         return redirect()->route('routines.my')->with('success', 'Rutīna veiksmīgi atjaunināta!');
     }
+
+    // dzēš rutīnu
     public function destroy(Routine $routine)
-{
-    $user = auth()->user();
-    
-    // Admins var dzēst jebkuru, lietotājs — tikai savu
-    if (!$user->is_admin && $routine->user_id !== $user->id) {
-        abort(403);
+    {
+        $user = auth()->user();
+
+        // admins var dzēst jebkuru
+        if (!$user->is_admin && $routine->user_id !== $user->id) {
+            abort(403);
+        }
+
+        if ($user->active_routine_id === $routine->id) {
+            $user->update(['active_routine_id' => null]);
+        }
+
+        $routine->delete();
+        return redirect()->route('routines.my')->with('success', 'Rutīna dzēsta!');
     }
 
-    if ($user->active_routine_id === $routine->id) {
-        $user->update(['active_routine_id' => null]);
+    // kopīgs formāts rutīnas atbildei
+    private function formatRoutine(Routine $routine): array
+    {
+        return [
+            'id'              => $routine->id,
+            'name'            => $routine->name,
+            'description'     => $routine->description,
+            'is_public'       => $routine->is_public,
+            'user_id'         => $routine->user_id,
+            'exercises_count' => $routine->exercises->count(),
+            'exercises'       => $routine->exercises->map(fn ($e) => [
+                'id'           => $e->id,
+                'name'         => $e->name,
+                'muscle_group' => $e->muscle_group,
+                'description'  => $e->description ?? null,
+                'day_number'   => $e->pivot->day_number,
+                'sets'         => $e->pivot->sets,
+                'reps'         => $e->pivot->reps,
+                'notes'        => $e->pivot->notes,
+            ])->toArray(),
+        ];
     }
 
-    $routine->delete();
-    return redirect()->route('routines.my')->with('success', 'Rutīna dzēsta!');
-}
+    // nedēļas dienas latviski
+    private function weekDays(): array
+    {
+        return [
+            1 => ['id' => 1, 'name' => 'Pirmdiena'],
+            2 => ['id' => 2, 'name' => 'Otrdiena'],
+            3 => ['id' => 3, 'name' => 'Trešdiena'],
+            4 => ['id' => 4, 'name' => 'Ceturtdiena'],
+            5 => ['id' => 5, 'name' => 'Piektdiena'],
+            6 => ['id' => 6, 'name' => 'Sestdiena'],
+            7 => ['id' => 7, 'name' => 'Svētdiena'],
+        ];
+    }
 }

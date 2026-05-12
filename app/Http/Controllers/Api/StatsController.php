@@ -1,6 +1,5 @@
 <?php
 namespace App\Http\Controllers\Api;
-
 use App\Http\Controllers\Controller;
 use App\Models\WorkoutLog;
 use Illuminate\Http\JsonResponse;
@@ -11,7 +10,6 @@ class StatsController extends Controller
     public function getDashboardStats(): JsonResponse
     {
         $user = Auth::user();
-
         $currentStreak = $this->calculateCurrentStreak($user);
 
         // šīs nedēļas treniņi
@@ -55,13 +53,13 @@ class StatsController extends Controller
             return 0;
         }
 
-        // sākam no šodienas vai vakardienas — ja šodien nav treniņa, sērija vēl var turpināties
+        // ja pēdējais treniņš nav šodien vai vakar — sērija beigusies
         $today = now()->toDateString();
         $yesterday = now()->subDay()->toDateString();
         $firstDate = $dates->first();
 
         if ($firstDate !== $today && $firstDate !== $yesterday) {
-            return 0; // pārāk sen, sērija pārtrūkusi
+            return 0;
         }
 
         $streak = 0;
@@ -71,21 +69,13 @@ class StatsController extends Controller
             if ($date === $expected) {
                 $streak++;
                 // nākamā gaidāmā diena
-                $expected = now()->subDays(
-                    now()->diffInDays(\Carbon\Carbon::parse($expected)) + 1
-                )->toDateString();
+                $expected = \Carbon\Carbon::parse($expected)->subDay()->toDateString();
             } else {
-                break; // roба — sērija beidzas
+                break;
             }
         }
 
         return $streak;
     }
 
-    private function calculateTotalCalories($user): int
-    {
-        // aptuveni 5 kcal/min, pietiekami precīzi
-        $totalMinutes = WorkoutLog::where('user_id', $user->id)->sum('duration_minutes');
-        return intval($totalMinutes * 5);
-    }
 }
