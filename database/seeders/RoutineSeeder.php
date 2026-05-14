@@ -60,8 +60,6 @@ class RoutineSeeder extends Seeder
             'is_public' => false
         ]);
 
-        // Attach exercises (no rest_seconds)
-
         $routine1->exercises()->attach([
             $exercises[0]->id => ['day_number' => 1, 'sets' => 3, 'reps' => 10],
             $exercises[1]->id => ['day_number' => 1, 'sets' => 3, 'reps' => 12],

@@ -16,7 +16,6 @@ class WorkoutSession extends Model
         'started_at',
         'ended_at',
         'duration_minutes',
-        'calories_burned',
         'notes'
     ];
     

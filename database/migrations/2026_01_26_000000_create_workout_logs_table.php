@@ -15,7 +15,6 @@ return new class extends Migration
             $table->foreignId('routine_id')->nullable()->constrained()->nullOnDelete();
             $table->string('name')->nullable();
             $table->integer('duration_minutes')->default(0);
-            $table->integer('calories_burned')->nullable();
             $table->text('notes')->nullable();
             $table->timestamp('completed_at')->useCurrent();
             $table->timestamps();

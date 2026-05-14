@@ -29,7 +29,7 @@ const form = ref({
 
 // Pievieno tukšu vingrinājuma rindu konkrētai dienai
 const addExerciseToDay = (day) => {
-    day.exercises.push({ id: null, sets: 3, reps: 10, rest_seconds: 60, notes: '' });
+    day.exercises.push({ id: null, sets: 3, reps: 10, notes: '' });
 };
 
 // Noņem vingrinājumu no dienas
@@ -47,7 +47,6 @@ const submit = () => {
                 day_number:   day.day_number,
                 sets:         ex.sets,
                 reps:         ex.reps,
-                rest_seconds: ex.rest_seconds,
                 notes:        ex.notes
             }))
     );
@@ -158,11 +157,6 @@ const submit = () => {
                                                 <label class="exercise-label">Atkārtojumi</label>
                                                 <input type="number" v-model.number="exercise.reps"
                                                        min="1" class="stat-input" required />
-                                            </div>
-                                            <div class="stat-field">
-                                                <label class="exercise-label">Atpūta (sek.)</label>
-                                                <input type="number" v-model.number="exercise.rest_seconds"
-                                                       min="0" class="stat-input" />
                                             </div>
                                         </div>
 
@@ -509,7 +503,7 @@ const submit = () => {
 
     .exercise-stats-grid {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(2, 1fr);
         gap: 0.75rem;
         margin-bottom: 1rem;
     }

@@ -134,7 +134,6 @@ const setAsActiveRoutine = async (routine: any) => {
             exercises: (routine.exercises || []).map((ex: any) => ({
                 id: ex.id, name: ex.name, muscle_group: ex.muscle_group || '',
                 sets: ex.pivot?.sets || 3, reps: ex.pivot?.reps || 10,
-                rest_seconds: ex.pivot?.rest_seconds || 60,
                 day_number:   ex.pivot?.day_number || 1,
                 notes:        ex.pivot?.notes || '',
             })),
@@ -186,7 +185,6 @@ const startRoutineWorkout = async (routine: any) => {
                 id: e.id, name: e.name, muscle_group: e.muscle_group || '',
                 sets: e.pivot?.sets ?? e.sets ?? 3,
                 reps: e.pivot?.reps ?? e.reps ?? 10,
-                rest_seconds: e.pivot?.rest_seconds ?? e.rest_seconds ?? 60,
                 notes:      e.pivot?.notes ?? e.notes ?? '',
                 day_number: e.pivot?.day_number ?? e.day_number ?? 1,
             }));
@@ -365,9 +363,6 @@ const startRoutineWorkout = async (routine: any) => {
                                             <div class="specs">
                                                 <div class="spec"><span>Seti</span><strong>{{ ex.pivot?.sets ?? ex.sets ?? 3 }}</strong></div>
                                                 <div class="spec"><span>Reps</span><strong>{{ ex.pivot?.reps ?? ex.reps ?? 10 }}</strong></div>
-                                                <div v-if="ex.pivot?.rest_seconds ?? ex.rest_seconds" class="spec">
-                                                    <span>Atpūta</span><strong>{{ ex.pivot?.rest_seconds ?? ex.rest_seconds }}s</strong>
-                                                </div>
                                             </div>
                                             <div v-if="ex.pivot?.notes ?? ex.notes" class="ex-notes">{{ ex.pivot?.notes ?? ex.notes }}</div>
                                         </div>

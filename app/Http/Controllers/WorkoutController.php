@@ -58,7 +58,6 @@ class WorkoutController extends Controller
             'exercises.*.id'          => 'required|exists:exercises,id',
             'exercises.*.sets'        => 'required|integer|min:1',
             'exercises.*.reps'        => 'required|integer|min:1',
-            'exercises.*.rest_seconds' => 'nullable|integer|min:0',
             'exercises.*.notes'       => 'nullable|string',
         ]);
 
@@ -129,7 +128,6 @@ class WorkoutController extends Controller
                 'type'                => $ex->exercise->type ?? 'strength',
                 'sets'                => $ex->sets_planned,
                 'reps'                => $ex->reps_planned,
-                'rest_seconds'        => $ex->rest_time ?? 60,
                 'sets_completed'      => $ex->sets_completed,
                 'reps_completed'      => $ex->reps_completed      ?? [],
                 'weights_used'        => $ex->weights_used        ?? [],

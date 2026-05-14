@@ -52,7 +52,6 @@ const getTodayExercises = () => {
         .map((e: any) => ({
             id: e.id, name: e.name, muscle_group: e.muscle_group || '',
             sets: e.pivot?.sets || e.sets || 3, reps: e.pivot?.reps || e.reps || 10,
-            rest_seconds: e.pivot?.rest_seconds || e.rest_seconds || 60,
             day_number: e.pivot?.day_number || e.day_number || 1,
         }));
 };

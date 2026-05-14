@@ -40,11 +40,10 @@ class MigrateWorkoutSessionsToLogs extends Command
                 'workout_session_id' => $session->id,
                 'routine_id' => $session->routine_id,
                 'name' => $session->name,
-                'duration_minutes' => $session->duration_minutes ?? 
-                    ($session->ended_at && $session->started_at 
-                        ? $session->started_at->diffInMinutes($session->ended_at) 
+                'duration_minutes' => $session->duration_minutes ??
+                    ($session->ended_at && $session->started_at
+                        ? $session->started_at->diffInMinutes($session->ended_at)
                         : 0),
-                'calories_burned' => $session->calories_burned ?? 0,
                 'notes' => $session->notes ?? '',
                 'completed_at' => $session->ended_at ?? $session->started_at,
             ]);

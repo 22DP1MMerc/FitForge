@@ -17,7 +17,6 @@ return new class extends Migration
             $table->timestamp('started_at')->useCurrent();
             $table->timestamp('ended_at')->nullable();
             $table->integer('duration_minutes')->default(0);
-            $table->integer('calories_burned')->nullable();
             $table->text('notes')->nullable();
             $table->timestamps();
 
@@ -32,7 +31,6 @@ return new class extends Migration
             $table->integer('order')->default(0);
             $table->integer('sets_planned')->default(0);
             $table->integer('reps_planned')->default(0);
-            $table->integer('rest_seconds_planned')->nullable();
             $table->text('notes_planned')->nullable();
             $table->integer('sets_completed')->default(0);
             $table->json('reps_completed')->nullable();

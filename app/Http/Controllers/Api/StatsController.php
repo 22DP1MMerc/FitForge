@@ -22,7 +22,6 @@ class StatsController extends Controller
 
         $totalWorkouts = WorkoutLog::where('user_id', $user->id)->count();
         $totalDuration = WorkoutLog::where('user_id', $user->id)->sum('duration_minutes');
-        $caloriesBurned = $this->calculateTotalCalories($user);
         $goalsAchieved = $user->goals()->where('completed', true)->count();
         $personalRecords = $user->personalRecords()->count();
 
@@ -32,7 +31,6 @@ class StatsController extends Controller
                 'weeklyWorkouts' => $weeklyWorkouts,
                 'totalWorkouts' => $totalWorkouts,
                 'totalDuration' => $totalDuration,
-                'caloriesBurned' => $caloriesBurned,
                 'goalsAchieved' => $goalsAchieved,
                 'personalRecords' => $personalRecords,
             ],

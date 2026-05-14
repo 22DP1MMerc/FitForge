@@ -50,9 +50,6 @@
                                     <h3>{{ getExerciseProperty(exercise, 'name') }}</h3>
                                     <div class="exercise-sets">
                                         {{ exercise.pivot?.sets || 0 }} × {{ exercise.pivot?.reps || 0 }}
-                                        <span v-if="exercise.pivot?.rest_seconds">
-                                            ({{ Math.floor(exercise.pivot.rest_seconds / 60) }} min atpūta)
-                                        </span>
                                     </div>
                                 </div>
                                 <p class="exercise-description">{{ getExerciseProperty(exercise, 'description') }}</p>

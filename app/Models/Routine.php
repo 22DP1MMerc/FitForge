@@ -21,7 +21,7 @@ class Routine extends Model
 public function exercises()
 {
     return $this->belongsToMany(Exercise::class, 'exercise_routine')
-        ->withPivot(['day_number', 'sets', 'reps', 'rest_seconds', 'notes'])
+        ->withPivot(['day_number', 'sets', 'reps', 'notes'])
         ->orderByPivot('day_number')
         ->withTimestamps();
 }

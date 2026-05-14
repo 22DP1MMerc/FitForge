@@ -16,7 +16,6 @@ return new class extends Migration
             $table->integer('sets');
             $table->integer('reps');
             $table->integer('duration_seconds')->nullable();
-            $table->integer('rest_seconds')->nullable();
             $table->text('notes')->nullable();
             $table->timestamps();
         });

@@ -135,14 +135,6 @@
                                                        class="form-input number-input">
                                             </div>
 
-                                            <div class="form-group">
-                                                <label>Atpūta (sekundes)</label>
-                                                <input type="number"
-                                                       v-model="exercise.rest_seconds"
-                                                       min="0"
-                                                       max="300"
-                                                       class="form-input number-input">
-                                            </div>
                                         </div>
 
                                         <!-- Piezīmes -->
@@ -210,7 +202,6 @@
             day_number: ex.pivot?.day_number || 1,
             sets: ex.pivot?.sets || 3,
             reps: ex.pivot?.reps || 10,
-            rest_seconds: ex.pivot?.rest_seconds || 60,
             notes: ex.pivot?.notes || ''
         })) : []
     });
@@ -236,11 +227,10 @@
     // Pievieno jaunu vingrinājumu
     const addExercise = () => {
         form.exercises.push({
-            id: '', // Changed from exercise_id to id
+            id: '',
             day_number: 1,
             sets: 3,
             reps: 10,
-            rest_seconds: 60,
             notes: ''
         });
     };
@@ -263,7 +253,6 @@
                 day_number: ex.day_number,
                 sets: ex.sets,
                 reps: ex.reps,
-                rest_seconds: ex.rest_seconds,
                 notes: ex.notes
             }))
         };
