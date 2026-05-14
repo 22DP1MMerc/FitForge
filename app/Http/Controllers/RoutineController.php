@@ -193,7 +193,7 @@ class RoutineController extends Controller
     {
         $user = auth()->user();
 
-        if ($routine->user_id !== $user->id) {
+        if ($routine->user_id !== $user->id && !$user->is_admin) {
             abort(403);
         }
 
@@ -213,7 +213,7 @@ class RoutineController extends Controller
     {
         $user = auth()->user();
 
-        if ($routine->user_id !== $user->id) {
+        if ($routine->user_id !== $user->id && !$user->is_admin) {
             abort(403);
         }
 
