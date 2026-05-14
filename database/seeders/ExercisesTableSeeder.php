@@ -290,24 +290,28 @@ class ExercisesTableSeeder extends Seeder
                 'description' => 'Izturības uzlabošanai',
                 'muscle_group' => 'Kardio',
                 'equipment' => 'Nav',
+                'type' => 'cardio',
             ],
             [
                 'name' => 'Cycling',
                 'description' => 'Velotreniņš',
                 'muscle_group' => 'Kardio',
                 'equipment' => 'Velotrenažieris',
+                'type' => 'cardio',
             ],
             [
                 'name' => 'Jump Rope',
                 'description' => 'Lēcieni ar lecamauklu',
                 'muscle_group' => 'Kardio',
                 'equipment' => 'Lecamauklas',
+                'type' => 'cardio',
             ],
             [
                 'name' => 'Stair Climber',
                 'description' => 'Kāpšana pa kāpnēm',
                 'muscle_group' => 'Kardio',
                 'equipment' => 'Trenažieris',
+                'type' => 'cardio',
             ],
 
             /* ======================

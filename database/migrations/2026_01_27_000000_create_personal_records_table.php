@@ -6,12 +6,13 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    public function up()
+    public function up(): void
     {
         Schema::create('personal_records', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->foreignId('exercise_id')->constrained()->onDelete('cascade');
+            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('exercise_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('workout_log_id')->nullable()->constrained()->nullOnDelete();
             $table->decimal('weight', 8, 2);
             $table->integer('reps');
             $table->integer('sets');
@@ -19,12 +20,9 @@ return new class extends Migration
             $table->date('achieved_at');
             $table->timestamps();
         });
-        Schema::table('personal_records', function (Blueprint $table) {
-    $table->foreignId('workout_log_id')->nullable()->constrained('workout_logs')->onDelete('set null');
-});
     }
-    
-    public function down()
+
+    public function down(): void
     {
         Schema::dropIfExists('personal_records');
     }

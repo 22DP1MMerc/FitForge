@@ -8,20 +8,18 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('exercises', function (Blueprint $table) {
+        Schema::create('routines', function (Blueprint $table) {
             $table->id();
             $table->string('name');
             $table->text('description')->nullable();
-            $table->string('muscle_group');
-            $table->string('equipment');
-            $table->string('type')->default('strength');
-            $table->string('image')->nullable();
+            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            $table->boolean('is_public')->default(false);
             $table->timestamps();
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('exercises');
+        Schema::dropIfExists('routines');
     }
 };
