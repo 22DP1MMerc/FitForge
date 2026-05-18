@@ -3,8 +3,9 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, usePage, router } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import axios from 'axios';
+import type { SharedData } from '@/types';
 
-const page = usePage();
+const page = usePage<SharedData>();
 const user = computed(() => page.props.auth?.user || { name: 'Sportists' });
 
 const props = withDefaults(defineProps<{
@@ -231,7 +232,7 @@ const editSchedule  = () => router.visit(activeRoutine.value ? '/routines' : '/r
                 <!-- Galvene -->
                 <div class="topbar">
                     <div class="topbar-left">
-                        <h1 class="topbar-title">Sveiks, {{ user.name }}! 👋</h1>
+                        <h1 class="topbar-title">Sveiki, {{ user.name }}! 👋</h1>
                         <p class="topbar-sub" v-if="props.stats.currentStreak > 0">
                             <strong>{{ props.stats.currentStreak }}</strong>
                             {{ props.stats.currentStreak === 1 ? 'nedēļas' : 'nedēļu' }} sērija! 🚀

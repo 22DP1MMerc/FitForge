@@ -48,7 +48,7 @@ interface Props {
 defineProps<Props>();
 
 const page = usePage();
-const user = page.props.auth.user;
+const user = (page.props as any).auth.user;
 
 // Profile form
 const form = useForm({
@@ -74,6 +74,14 @@ const showNewPassword = ref(false);
 const showConfirmPassword = ref(false);
 
 const updatePassword = () => {
+    if (passwordForm.password.length > 0 && passwordForm.password.length < 8) {
+        passwordForm.setError('password', 'Parolei jābūt vismaz 8 rakstzīmēm');
+        return;
+    }
+    if (passwordForm.password_confirmation && passwordForm.password !== passwordForm.password_confirmation) {
+        passwordForm.setError('password_confirmation', 'Paroles nesakrīt');
+        return;
+    }
     passwordForm.put(route('password.update'), {
         preserveScroll: true,
         onSuccess: () => {
@@ -92,6 +100,15 @@ const showGoalForm = ref(false);
 const processingGoalId = ref<number | null>(null);
 const errorMessage = ref<string | null>(null);
 const editingGoal = ref<Goal | null>(null);
+const goalFormError = ref('');
+const savingGoal = ref(false);
+const deleteConfirmId = ref<number | null>(null);
+const notification = ref<{ message: string; type: 'success' | 'error' } | null>(null);
+
+const showNotification = (message: string, type: 'success' | 'error' = 'success') => {
+    notification.value = { message, type };
+    setTimeout(() => { notification.value = null; }, 3500);
+};
 
 const goalForm = ref<GoalForm>({
     title: '',
@@ -126,19 +143,20 @@ const loadGoals = async () => {
 
 // Create or update goal
 const saveGoal = async () => {
+    goalFormError.value = '';
+
+    if (!goalForm.value.title.trim()) {
+        goalFormError.value = 'Lūdzu, ievadiet mērķa nosaukumu';
+        return;
+    }
+    if (!goalForm.value.target_value || parseFloat(goalForm.value.target_value) <= 0) {
+        goalFormError.value = 'Lūdzu, ievadiet derīgu mērķa vērtību (lielāku par 0)';
+        return;
+    }
+
     try {
-        loading.value = true;
-        errorMessage.value = null;
-
-        if (!goalForm.value.title.trim()) {
-            alert('Lūdzu, ievadiet mērķa nosaukumu');
-            return;
-        }
-
-        if (!goalForm.value.target_value || parseFloat(goalForm.value.target_value) <= 0) {
-            alert('Lūdzu, ievadiet derīgu mērķa vērtību');
-            return;
-        }
+        savingGoal.value = true;
+        const isEditing = !!editingGoal.value;
 
         const payload = {
             title: goalForm.value.title.trim(),
@@ -158,21 +176,17 @@ const saveGoal = async () => {
         await loadGoals();
         showGoalForm.value = false;
         resetGoalForm();
-        alert(editingGoal.value ? 'Mērķis veiksmīgi atjaunināts!' : 'Mērķis veiksmīgi izveidots!');
+        showNotification(isEditing ? 'Mērķis veiksmīgi atjaunināts!' : 'Mērķis veiksmīgi izveidots!');
     } catch (error: any) {
         console.error('Error saving goal:', error);
         if (error.response?.data?.errors) {
             const errors = error.response.data.errors;
-            let errorMessage = 'Kļūdas:\n';
-            Object.keys(errors).forEach(key => {
-                errorMessage += `${key}: ${errors[key].join(', ')}\n`;
-            });
-            alert(errorMessage);
+            goalFormError.value = (Object.values(errors) as string[][]).flat().join(', ');
         } else {
-            alert('Neizdevās saglabāt mērķi. Lūdzu, mēģiniet vēlreiz.');
+            goalFormError.value = 'Neizdevās saglabāt mērķi. Lūdzu, mēģiniet vēlreiz.';
         }
     } finally {
-        loading.value = false;
+        savingGoal.value = false;
     }
 };
 
@@ -199,25 +213,24 @@ const toggleGoalCompletion = async (goalId: number) => {
         await loadGoals();
     } catch (error: any) {
         console.error('Error toggling goal completion:', error);
-        alert('Neizdevās atjaunināt mērķa statusu');
+        showNotification('Neizdevās atjaunināt mērķa statusu', 'error');
     } finally {
         processingGoalId.value = null;
     }
 };
 
 const deleteGoal = async (goalId: number) => {
-    if (confirm('Vai tiešām vēlaties dzēst šo mērķi?')) {
-        try {
-            processingGoalId.value = goalId;
-            await axios.delete(`/api/goals/${goalId}`);
-            await loadGoals();
-            alert('Mērķis veiksmīgi dzēsts!');
-        } catch (error: any) {
-            console.error('Error deleting goal:', error);
-            alert('Neizdevās dzēst mērķi');
-        } finally {
-            processingGoalId.value = null;
-        }
+    try {
+        processingGoalId.value = goalId;
+        deleteConfirmId.value = null;
+        await axios.delete(`/api/goals/${goalId}`);
+        await loadGoals();
+        showNotification('Mērķis veiksmīgi dzēsts!');
+    } catch (error: any) {
+        console.error('Error deleting goal:', error);
+        showNotification('Neizdevās dzēst mērķi', 'error');
+    } finally {
+        processingGoalId.value = null;
     }
 };
 
@@ -235,6 +248,7 @@ const resetGoalForm = () => {
 
 const cancelGoalForm = () => {
     showGoalForm.value = false;
+    goalFormError.value = '';
     resetGoalForm();
 };
 
@@ -264,6 +278,15 @@ onMounted(() => {
 <template>
     <AppLayout>
         <Head title="Profila iestatījumi" />
+
+        <!-- Notification Toast -->
+        <Transition name="toast">
+            <div v-if="notification" class="notification-toast" :class="notification.type">
+                <CheckCircle v-if="notification.type === 'success'" :size="18" />
+                <ShieldAlert v-else :size="18" />
+                <span>{{ notification.message }}</span>
+            </div>
+        </Transition>
 
         <div class="profile-page">
             <!-- Animated Background -->
@@ -385,8 +408,8 @@ onMounted(() => {
                                             <Lock class="input-icon" />
                                             <Input :type="showPassword ? 'text' : 'password'" v-model="passwordForm.current_password" required placeholder="Ievadi pašreizējo paroli" />
                                             <button type="button" @click="showPassword = !showPassword" class="toggle-password">
-                                                <EyeOff v-if="showPassword" size="18" />
-                                                <Eye v-else size="18" />
+                                                <EyeOff v-if="showPassword" :size="18" />
+                                                <Eye v-else :size="18" />
                                             </button>
                                         </div>
                                         <InputError :message="passwordForm.errors.current_password" />
@@ -398,8 +421,8 @@ onMounted(() => {
                                             <Lock class="input-icon" />
                                             <Input :type="showNewPassword ? 'text' : 'password'" v-model="passwordForm.password" required placeholder="Ievadi jauno paroli" />
                                             <button type="button" @click="showNewPassword = !showNewPassword" class="toggle-password">
-                                                <EyeOff v-if="showNewPassword" size="18" />
-                                                <Eye v-else size="18" />
+                                                <EyeOff v-if="showNewPassword" :size="18" />
+                                                <Eye v-else :size="18" />
                                             </button>
                                         </div>
                                         <InputError :message="passwordForm.errors.password" />
@@ -411,10 +434,17 @@ onMounted(() => {
                                             <Lock class="input-icon" />
                                             <Input :type="showConfirmPassword ? 'text' : 'password'" v-model="passwordForm.password_confirmation" required placeholder="Apstiprini jauno paroli" />
                                             <button type="button" @click="showConfirmPassword = !showConfirmPassword" class="toggle-password">
-                                                <EyeOff v-if="showConfirmPassword" size="18" />
-                                                <Eye v-else size="18" />
+                                                <EyeOff v-if="showConfirmPassword" :size="18" />
+                                                <Eye v-else :size="18" />
                                             </button>
                                         </div>
+                                        <p v-if="passwordForm.password_confirmation && passwordForm.password !== passwordForm.password_confirmation && !passwordForm.errors.password_confirmation" class="password-hint mismatch">
+                                            Paroles nesakrīt
+                                        </p>
+                                        <p v-else-if="passwordForm.password_confirmation && passwordForm.password === passwordForm.password_confirmation" class="password-hint match">
+                                            Paroles sakrīt
+                                        </p>
+                                        <InputError :message="passwordForm.errors.password_confirmation" />
                                     </div>
 
                                     <div class="form-actions">
@@ -447,7 +477,7 @@ onMounted(() => {
                                     </div>
                                 </div>
                                 <button @click="showGoalForm = true; resetGoalForm()" class="btn-add">
-                                    <Plus size="18" />
+                                    <Plus :size="18" />
                                     <span>Jauns mērķis</span>
                                 </button>
                             </div>
@@ -457,18 +487,22 @@ onMounted(() => {
                                 <div v-if="showGoalForm" class="modal-overlay" @click.self="cancelGoalForm">
                                     <div class="modal-container">
                                         <div class="modal-header">
-                                            <h3>{{ editingGoal ? 'Rediģēt mērķi' : 'Izveidot jaunu mērķi' }}</h3>
+                                            <h3>{{ editingGoal ? 'Rediģēt mērķi' : 'Jauns mērķis' }}</h3>
                                             <button @click="cancelGoalForm" class="modal-close">&times;</button>
                                         </div>
                                         <div class="modal-body">
+                                            <div v-if="goalFormError" class="modal-error">
+                                                <ShieldAlert :size="15" />
+                                                <span>{{ goalFormError }}</span>
+                                            </div>
                                             <div class="form-stack">
                                                 <div class="form-group">
-                                                    <Label class="form-label">Nosaukums</Label>
-                                                    <Input v-model="goalForm.title" placeholder="Piemēram: Noskriet 5km" />
+                                                    <Label class="form-label">Nosaukums <span class="required">*</span></Label>
+                                                    <Input v-model="goalForm.title" placeholder="Piemēram: Noskriet 5km" @input="goalFormError = ''" />
                                                 </div>
                                                 <div class="form-group">
-                                                    <Label class="form-label">Apraksts (pēc izvēles)</Label>
-                                                    <Input v-model="goalForm.description" placeholder="Īss apraksts par mērķi..." />
+                                                    <Label class="form-label">Apraksts <span class="optional">(pēc izvēles)</span></Label>
+                                                    <textarea v-model="goalForm.description" placeholder="Īss apraksts par mērķi..." class="textarea-custom" rows="2"></textarea>
                                                 </div>
                                                 <div class="form-row">
                                                     <div class="form-group">
@@ -481,17 +515,17 @@ onMounted(() => {
                                                         </select>
                                                     </div>
                                                     <div class="form-group">
-                                                        <Label class="form-label">Mērvienība</Label>
+                                                        <Label class="form-label">Mērvienība <span class="optional">(pēc izvēles)</span></Label>
                                                         <Input v-model="goalForm.unit" placeholder="kg, km, min..." />
                                                     </div>
                                                 </div>
                                                 <div class="form-row">
                                                     <div class="form-group">
-                                                        <Label class="form-label">Mērķa vērtība</Label>
-                                                        <Input v-model="goalForm.target_value" type="number" placeholder="100" />
+                                                        <Label class="form-label">Mērķa vērtība <span class="required">*</span></Label>
+                                                        <Input v-model="goalForm.target_value" type="number" min="0.01" step="any" placeholder="100" @input="goalFormError = ''" />
                                                     </div>
                                                     <div class="form-group">
-                                                        <Label class="form-label">Termiņš (pēc izvēles)</Label>
+                                                        <Label class="form-label">Termiņš <span class="optional">(pēc izvēles)</span></Label>
                                                         <Input v-model="goalForm.deadline" type="date" />
                                                     </div>
                                                 </div>
@@ -499,8 +533,9 @@ onMounted(() => {
                                         </div>
                                         <div class="modal-footer">
                                             <button @click="cancelGoalForm" class="btn-outline">Atcelt</button>
-                                            <button @click="saveGoal" :disabled="loading" class="btn-primary">
-                                                {{ loading ? 'Saglabā...' : (editingGoal ? 'Atjaunināt' : 'Izveidot') }}
+                                            <button @click="saveGoal" :disabled="savingGoal" class="btn-primary">
+                                                <Loader2 v-if="savingGoal" :size="16" class="animate-spin" />
+                                                {{ savingGoal ? 'Saglabā...' : (editingGoal ? 'Atjaunināt' : 'Izveidot') }}
                                             </button>
                                         </div>
                                     </div>
@@ -514,7 +549,7 @@ onMounted(() => {
 
                                 <!-- Error Message -->
                                 <div v-if="errorMessage" class="error-message">
-                                    <ShieldAlert size="18" />
+                                    <ShieldAlert :size="18" />
                                     <span>{{ errorMessage }}</span>
                                 </div>
 
@@ -526,7 +561,7 @@ onMounted(() => {
                                     <h3>Nav izveidots neviens mērķis</h3>
                                     <p>Sāc savu fitnesa ceļojumu ar pirmo mērķi!</p>
                                     <button @click="showGoalForm = true; resetGoalForm()" class="btn-primary">
-                                        <Plus size="18" />
+                                        <Plus :size="18" />
                                         Izveidot pirmo mērķi
                                     </button>
                                 </div>
@@ -536,15 +571,20 @@ onMounted(() => {
                                     <div v-for="goal in goals" :key="goal.id" class="goal-card">
                                         <div class="goal-header">
                                             <div class="goal-type" :style="{ background: getGoalTypeConfig(goal.type).bg }">
-                                                <component :is="getGoalTypeConfig(goal.type).icon" size="16" :style="{ color: getGoalTypeConfig(goal.type).color }" />
+                                                <component :is="getGoalTypeConfig(goal.type).icon" :size="16" :style="{ color: getGoalTypeConfig(goal.type).color }" />
                                                 <span>{{ getGoalTypeConfig(goal.type).name }}</span>
                                             </div>
                                             <div class="goal-actions">
                                                 <button @click="editGoal(goal)" class="action-btn edit">
-                                                    <Edit size="16" />
+                                                    <Edit :size="16" />
                                                 </button>
-                                                <button @click="deleteGoal(goal.id)" :disabled="processingGoalId === goal.id" class="action-btn delete">
-                                                    <Trash2 size="16" />
+                                                <div v-if="deleteConfirmId === goal.id" class="delete-confirm">
+                                                    <span>Dzēst?</span>
+                                                    <button @click="deleteGoal(goal.id)" :disabled="processingGoalId === goal.id" class="confirm-yes">Jā</button>
+                                                    <button @click="deleteConfirmId = null" class="confirm-no">Nē</button>
+                                                </div>
+                                                <button v-else @click="deleteConfirmId = goal.id" :disabled="processingGoalId === goal.id" class="action-btn delete">
+                                                    <Trash2 :size="16" />
                                                 </button>
                                             </div>
                                         </div>
@@ -563,7 +603,7 @@ onMounted(() => {
                                             <div class="progress-stats">
                                                 <span>{{ goal.current_value }} / {{ goal.target_value }} {{ goal.unit }}</span>
                                                 <span v-if="goal.deadline" class="deadline">
-                                                    <Calendar size="12" />
+                                                    <Calendar :size="12" />
                                                     {{ new Date(goal.deadline).toLocaleDateString('lv-LV') }}
                                                 </span>
                                             </div>
@@ -571,12 +611,12 @@ onMounted(() => {
 
                                         <div class="goal-footer">
                                             <button @click="toggleGoalCompletion(goal.id)" :disabled="processingGoalId === goal.id" class="complete-btn" :class="{ completed: goal.completed }">
-                                                <CheckCircle v-if="goal.completed" size="16" />
+                                                <CheckCircle v-if="goal.completed" :size="16" />
                                                 <span v-else class="circle-outline"></span>
                                                 {{ goal.completed ? 'Pabeigts' : 'Atzīmēt kā pabeigtu' }}
                                             </button>
                                             <div v-if="goal.completed" class="achievement-badge">
-                                                <Medal size="14" />
+                                                <Medal :size="14" />
                                                 <span>Sasniegts!</span>
                                             </div>
                                         </div>
@@ -654,7 +694,7 @@ onMounted(() => {
                                 <div v-else class="active-list">
                                     <div v-for="goal in inProgressGoals.slice(0, 4)" :key="goal.id" class="active-item">
                                         <div class="active-icon-wrapper" :style="{ background: getGoalTypeConfig(goal.type).bg }">
-                                            <component :is="getGoalTypeConfig(goal.type).icon" size="14" :style="{ color: getGoalTypeConfig(goal.type).color }" />
+                                            <component :is="getGoalTypeConfig(goal.type).icon" :size="14" :style="{ color: getGoalTypeConfig(goal.type).color }" />
                                         </div>
                                         <div class="active-info">
                                             <div class="active-title">{{ goal.title }}</div>
@@ -682,7 +722,7 @@ onMounted(() => {
                             <div class="card-body">
                                 <div v-if="recentCompleted.length === 0" class="no-recent">
                                     <div class="empty-small">
-                                        <Medal size="32" />
+                                        <Medal :size="32" />
                                         <p>Vēl nav pabeigto mērķu</p>
                                         <span>Pabeidz savu pirmo mērķi!</span>
                                     </div>
@@ -690,7 +730,7 @@ onMounted(() => {
                                 <div v-else class="recent-list">
                                     <div v-for="goal in recentCompleted" :key="goal.id" class="recent-item">
                                         <div class="recent-icon" :style="{ background: getGoalTypeConfig(goal.type).bg }">
-                                            <component :is="getGoalTypeConfig(goal.type).icon" size="16" :style="{ color: getGoalTypeConfig(goal.type).color }" />
+                                            <component :is="getGoalTypeConfig(goal.type).icon" :size="16" :style="{ color: getGoalTypeConfig(goal.type).color }" />
                                         </div>
                                         <div class="recent-info">
                                             <div class="recent-name">{{ goal.title }}</div>
@@ -698,7 +738,7 @@ onMounted(() => {
                                                 {{ new Date(goal.updated_at).toLocaleDateString('lv-LV') }}
                                             </div>
                                         </div>
-                                        <ChevronRight class="chevron" size="16" />
+                                        <ChevronRight class="chevron" :size="16" />
                                     </div>
                                 </div>
                             </div>
@@ -1755,6 +1795,149 @@ onMounted(() => {
         border-radius: 50%;
         background: #f97316;
         margin-top: 0.5rem;
+    }
+
+    /* Notification Toast */
+    .notification-toast {
+        position: fixed;
+        top: 1.5rem;
+        right: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.625rem;
+        padding: 0.75rem 1.25rem;
+        border-radius: 0.875rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+        z-index: 9999;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    }
+
+    .notification-toast.success {
+        background: #ecfdf5;
+        color: #065f46;
+        border: 1px solid #a7f3d0;
+    }
+
+    .notification-toast.error {
+        background: #fef2f2;
+        color: #991b1b;
+        border: 1px solid #fecaca;
+    }
+
+    .toast-enter-active, .toast-leave-active {
+        transition: all 0.3s ease;
+    }
+
+    .toast-enter-from, .toast-leave-to {
+        opacity: 0;
+        transform: translateX(1rem);
+    }
+
+    /* Password hints */
+    .password-hint {
+        font-size: 0.75rem;
+        font-weight: 500;
+        margin-top: 0.25rem;
+    }
+
+    .password-hint.mismatch {
+        color: #ef4444;
+    }
+
+    .password-hint.match {
+        color: #10b981;
+    }
+
+    /* Modal error */
+    .modal-error {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: #fef2f2;
+        color: #dc2626;
+        padding: 0.625rem 0.875rem;
+        border-radius: 0.5rem;
+        font-size: 0.8125rem;
+        margin-bottom: 1rem;
+        border: 1px solid #fecaca;
+    }
+
+    /* Modal form helpers */
+    .required {
+        color: #ef4444;
+    }
+
+    .optional {
+        color: #94a3b8;
+        font-weight: 400;
+    }
+
+    /* Textarea */
+    .textarea-custom {
+        width: 100%;
+        padding: 0.625rem 0.875rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.75rem;
+        font-size: 0.9rem;
+        resize: vertical;
+        min-height: 60px;
+        font-family: inherit;
+        background: white;
+        transition: border-color 0.2s;
+        color: #1e293b;
+    }
+
+    .textarea-custom:focus {
+        outline: none;
+        border-color: #f97316;
+        box-shadow: 0 0 0 3px rgba(249,115,22,0.1);
+    }
+
+    /* Inline delete confirm */
+    .delete-confirm {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        border-radius: 0.5rem;
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
+        color: #dc2626;
+        font-weight: 500;
+    }
+
+    .confirm-yes {
+        background: #ef4444;
+        color: white;
+        border: none;
+        border-radius: 0.375rem;
+        padding: 0.125rem 0.5rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+
+    .confirm-yes:hover {
+        background: #dc2626;
+    }
+
+    .confirm-no {
+        background: white;
+        color: #64748b;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.375rem;
+        padding: 0.125rem 0.5rem;
+        font-size: 0.75rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .confirm-no:hover {
+        background: #f8fafc;
     }
 
     /* Animations */
