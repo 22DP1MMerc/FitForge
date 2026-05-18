@@ -73,12 +73,32 @@ const showPassword = ref(false);
 const showNewPassword = ref(false);
 const showConfirmPassword = ref(false);
 
+const passwordStrength = computed(() => {
+    const p = passwordForm.password;
+    return {
+        minLength: p.length >= 8,
+        hasUppercase: /[A-Z]/.test(p),
+        hasNumberOrSymbol: /[0-9!@#$%^&*(),.?":{}|<>]/.test(p),
+    };
+});
+
+const isPasswordStrong = computed(() =>
+    passwordStrength.value.minLength &&
+    passwordStrength.value.hasUppercase &&
+    passwordStrength.value.hasNumberOrSymbol
+);
+
 const updatePassword = () => {
-    if (passwordForm.password.length > 0 && passwordForm.password.length < 8) {
-        passwordForm.setError('password', 'Parolei jābūt vismaz 8 rakstzīmēm');
+    passwordForm.clearErrors();
+    if (!passwordForm.current_password) {
+        passwordForm.setError('current_password', 'Ievadi pašreizējo paroli');
         return;
     }
-    if (passwordForm.password_confirmation && passwordForm.password !== passwordForm.password_confirmation) {
+    if (passwordForm.password.length > 0 && !isPasswordStrong.value) {
+        passwordForm.setError('password', 'Parolei jābūt vismaz 8 rakstzīmēm, jāsatur lielais burts un cipars vai simbols');
+        return;
+    }
+    if (passwordForm.password !== passwordForm.password_confirmation) {
         passwordForm.setError('password_confirmation', 'Paroles nesakrīt');
         return;
     }
@@ -251,6 +271,13 @@ const cancelGoalForm = () => {
     goalFormError.value = '';
     resetGoalForm();
 };
+
+const goalTypes = [
+    { value: 'workout',   label: 'Treniņš',  emoji: '💪' },
+    { value: 'weight',    label: 'Svars',    emoji: '⚖️' },
+    { value: 'strength',  label: 'Spēks',    emoji: '🏋️' },
+    { value: 'endurance', label: 'Izturība', emoji: '🏃' },
+] as const;
 
 // Get goal type config
 const getGoalTypeConfig = (type: string) => {
@@ -425,6 +452,17 @@ onMounted(() => {
                                                 <Eye v-else :size="18" />
                                             </button>
                                         </div>
+                                        <div v-if="passwordForm.password.length > 0" class="pw-rules">
+                                            <div class="pw-rule" :class="{ met: passwordStrength.minLength }">
+                                                <span class="pw-dot"></span> Vismaz 8 rakstzīmes
+                                            </div>
+                                            <div class="pw-rule" :class="{ met: passwordStrength.hasUppercase }">
+                                                <span class="pw-dot"></span> Lielais burts (A–Z)
+                                            </div>
+                                            <div class="pw-rule" :class="{ met: passwordStrength.hasNumberOrSymbol }">
+                                                <span class="pw-dot"></span> Cipars vai simbols
+                                            </div>
+                                        </div>
                                         <InputError :message="passwordForm.errors.password" />
                                     </div>
 
@@ -483,63 +521,90 @@ onMounted(() => {
                             </div>
                             <div class="card-divider"></div>
                             <div class="card-body">
-                                <!-- Goal Form Modal -->
-                                <div v-if="showGoalForm" class="modal-overlay" @click.self="cancelGoalForm">
-                                    <div class="modal-container">
-                                        <div class="modal-header">
-                                            <h3>{{ editingGoal ? 'Rediģēt mērķi' : 'Jauns mērķis' }}</h3>
-                                            <button @click="cancelGoalForm" class="modal-close">&times;</button>
-                                        </div>
-                                        <div class="modal-body">
-                                            <div v-if="goalFormError" class="modal-error">
-                                                <ShieldAlert :size="15" />
-                                                <span>{{ goalFormError }}</span>
+                                <!-- Goal Form Modal — teleported to body to escape card transform stacking context -->
+                                <Teleport to="body">
+                                    <Transition name="modal-anim">
+                                        <div v-if="showGoalForm" class="gm-overlay" @click.self="cancelGoalForm">
+                                            <div class="gm-panel">
+                                                <!-- Header -->
+                                                <div class="gm-header">
+                                                    <div class="gm-header-icon" :class="`gm-type-${goalForm.type}`">
+                                                        <Target :size="20" />
+                                                    </div>
+                                                    <div class="gm-header-text">
+                                                        <h3 class="gm-title">{{ editingGoal ? 'Rediģēt mērķi' : 'Jauns mērķis' }}</h3>
+                                                        <p class="gm-subtitle">{{ editingGoal ? 'Atjaunini mērķa informāciju' : 'Izvirzi jaunu fitnesa mērķi' }}</p>
+                                                    </div>
+                                                    <button @click="cancelGoalForm" class="gm-close" aria-label="Aizvērt">
+                                                        <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M13.5 4.5L4.5 13.5M4.5 4.5L13.5 13.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                                                    </button>
+                                                </div>
+
+                                                <!-- Error -->
+                                                <div v-if="goalFormError" class="gm-error">
+                                                    <ShieldAlert :size="15" />
+                                                    <span>{{ goalFormError }}</span>
+                                                </div>
+
+                                                <!-- Body -->
+                                                <div class="gm-body">
+                                                    <!-- Type selector — visual pills -->
+                                                    <div class="gm-field">
+                                                        <label class="gm-label">Tips</label>
+                                                        <div class="gm-type-pills">
+                                                            <button type="button" v-for="t in goalTypes" :key="t.value"
+                                                                @click="goalForm.type = t.value"
+                                                                class="gm-pill"
+                                                                :class="{ active: goalForm.type === t.value, [`pill-${t.value}`]: true }">
+                                                                <span>{{ t.emoji }}</span>
+                                                                <span>{{ t.label }}</span>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    <!-- Title -->
+                                                    <div class="gm-field">
+                                                        <label class="gm-label">Nosaukums <span class="gm-required">*</span></label>
+                                                        <input v-model="goalForm.title" class="gm-input" placeholder="Piemēram: Noskriet 5 km" @input="goalFormError = ''" />
+                                                    </div>
+
+                                                    <!-- Description -->
+                                                    <div class="gm-field">
+                                                        <label class="gm-label">Apraksts <span class="gm-optional">— pēc izvēles</span></label>
+                                                        <textarea v-model="goalForm.description" class="gm-textarea" rows="2" placeholder="Īss apraksts par mērķi..."></textarea>
+                                                    </div>
+
+                                                    <!-- Value + Unit -->
+                                                    <div class="gm-row">
+                                                        <div class="gm-field">
+                                                            <label class="gm-label">Mērķa vērtība <span class="gm-required">*</span></label>
+                                                            <input v-model="goalForm.target_value" type="number" min="0.01" step="any" class="gm-input" placeholder="100" @input="goalFormError = ''" />
+                                                        </div>
+                                                        <div class="gm-field">
+                                                            <label class="gm-label">Mērvienība <span class="gm-optional">— pēc izvēles</span></label>
+                                                            <input v-model="goalForm.unit" class="gm-input" placeholder="kg, km, min..." />
+                                                        </div>
+                                                    </div>
+
+                                                    <!-- Deadline -->
+                                                    <div class="gm-field">
+                                                        <label class="gm-label">Termiņš <span class="gm-optional">— pēc izvēles</span></label>
+                                                        <input v-model="goalForm.deadline" type="date" class="gm-input" />
+                                                    </div>
+                                                </div>
+
+                                                <!-- Footer -->
+                                                <div class="gm-footer">
+                                                    <button @click="cancelGoalForm" class="gm-btn-cancel">Atcelt</button>
+                                                    <button @click="saveGoal" :disabled="savingGoal" class="gm-btn-save">
+                                                        <Loader2 v-if="savingGoal" :size="16" class="animate-spin" />
+                                                        {{ savingGoal ? 'Saglabā...' : (editingGoal ? 'Saglabāt izmaiņas' : 'Izveidot mērķi') }}
+                                                    </button>
+                                                </div>
                                             </div>
-                                            <div class="form-stack">
-                                                <div class="form-group">
-                                                    <Label class="form-label">Nosaukums <span class="required">*</span></Label>
-                                                    <Input v-model="goalForm.title" placeholder="Piemēram: Noskriet 5km" @input="goalFormError = ''" />
-                                                </div>
-                                                <div class="form-group">
-                                                    <Label class="form-label">Apraksts <span class="optional">(pēc izvēles)</span></Label>
-                                                    <textarea v-model="goalForm.description" placeholder="Īss apraksts par mērķi..." class="textarea-custom" rows="2"></textarea>
-                                                </div>
-                                                <div class="form-row">
-                                                    <div class="form-group">
-                                                        <Label class="form-label">Tips</Label>
-                                                        <select v-model="goalForm.type" class="select-custom">
-                                                            <option value="workout">💪 Treniņš</option>
-                                                            <option value="weight">⚖️ Svars</option>
-                                                            <option value="strength">🏋️ Spēks</option>
-                                                            <option value="endurance">🏃 Izturība</option>
-                                                        </select>
-                                                    </div>
-                                                    <div class="form-group">
-                                                        <Label class="form-label">Mērvienība <span class="optional">(pēc izvēles)</span></Label>
-                                                        <Input v-model="goalForm.unit" placeholder="kg, km, min..." />
-                                                    </div>
-                                                </div>
-                                                <div class="form-row">
-                                                    <div class="form-group">
-                                                        <Label class="form-label">Mērķa vērtība <span class="required">*</span></Label>
-                                                        <Input v-model="goalForm.target_value" type="number" min="0.01" step="any" placeholder="100" @input="goalFormError = ''" />
-                                                    </div>
-                                                    <div class="form-group">
-                                                        <Label class="form-label">Termiņš <span class="optional">(pēc izvēles)</span></Label>
-                                                        <Input v-model="goalForm.deadline" type="date" />
-                                                    </div>
-                                                </div>
-                                            </div>
                                         </div>
-                                        <div class="modal-footer">
-                                            <button @click="cancelGoalForm" class="btn-outline">Atcelt</button>
-                                            <button @click="saveGoal" :disabled="savingGoal" class="btn-primary">
-                                                <Loader2 v-if="savingGoal" :size="16" class="animate-spin" />
-                                                {{ savingGoal ? 'Saglabā...' : (editingGoal ? 'Atjaunināt' : 'Izveidot') }}
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
+                                    </Transition>
+                                </Teleport>
 
                                 <!-- Loading State -->
                                 <div v-if="loading && !showGoalForm" class="loading-state">
@@ -1275,53 +1340,309 @@ onMounted(() => {
         }
     }
 
-    .modal-header {
+    /* ── Goal Modal (gm-*) ───────────────────────────────── */
+    .gm-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.55);
+        backdrop-filter: blur(6px);
         display: flex;
-        justify-content: space-between;
         align-items: center;
-        padding: 1.25rem 1.5rem;
-        border-bottom: 1px solid #e2e8f0;
+        justify-content: center;
+        z-index: 9000;
+        padding: 1rem;
     }
 
-        .modal-header h3 {
-            font-size: 1.25rem;
-            font-weight: 700;
-            color: #1e293b;
-        }
+    .gm-panel {
+        background: #fff;
+        border-radius: 1.5rem;
+        width: 100%;
+        max-width: 560px;
+        max-height: 90vh;
+        overflow-y: auto;
+        box-shadow: 0 24px 64px rgba(0,0,0,0.18), 0 8px 24px rgba(0,0,0,0.1);
+        display: flex;
+        flex-direction: column;
+    }
 
-    .modal-close {
-        background: none;
-        border: none;
-        font-size: 1.5rem;
-        cursor: pointer;
+    /* Header */
+    .gm-header {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 1.5rem 1.5rem 1.25rem;
+        border-bottom: 1px solid #f1f5f9;
+        flex-shrink: 0;
+    }
+
+    .gm-header-icon {
+        width: 46px;
+        height: 46px;
+        border-radius: 0.875rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #ecfdf5;
+        color: #10b981;
+        flex-shrink: 0;
+    }
+
+    .gm-type-workout   { background: #eff6ff; color: #3b82f6; }
+    .gm-type-weight    { background: #ecfdf5; color: #10b981; }
+    .gm-type-strength  { background: #fff7ed; color: #f97316; }
+    .gm-type-endurance { background: #f5f3ff; color: #8b5cf6; }
+
+    .gm-header-text { flex: 1; }
+
+    .gm-title {
+        font-size: 1.125rem;
+        font-weight: 700;
+        color: #0f172a;
+        margin: 0 0 0.125rem;
+    }
+
+    .gm-subtitle {
+        font-size: 0.8125rem;
         color: #94a3b8;
+        margin: 0;
     }
 
-    .modal-body {
+    .gm-close {
+        width: 36px;
+        height: 36px;
+        border-radius: 0.625rem;
+        border: 1px solid #e2e8f0;
+        background: #f8fafc;
+        color: #64748b;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s;
+        flex-shrink: 0;
+    }
+
+    .gm-close:hover {
+        background: #fee2e2;
+        border-color: #fca5a5;
+        color: #dc2626;
+    }
+
+    /* Error */
+    .gm-error {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: #fef2f2;
+        color: #dc2626;
+        border: 1px solid #fecaca;
+        border-radius: 0;
+        padding: 0.75rem 1.5rem;
+        font-size: 0.8125rem;
+        font-weight: 500;
+    }
+
+    /* Body */
+    .gm-body {
         padding: 1.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1.125rem;
+        overflow-y: auto;
     }
 
-    .modal-footer {
+    .gm-field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.375rem;
+    }
+
+    .gm-label {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #475569;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .gm-required { color: #ef4444; }
+    .gm-optional { color: #94a3b8; font-weight: 400; text-transform: none; letter-spacing: 0; }
+
+    .gm-input {
+        width: 100%;
+        padding: 0.7rem 0.875rem;
+        border: 1.5px solid #e2e8f0;
+        border-radius: 0.75rem;
+        font-size: 0.9375rem;
+        color: #0f172a;
+        background: #fafafa;
+        transition: border-color 0.2s, box-shadow 0.2s;
+        outline: none;
+        box-sizing: border-box;
+    }
+
+    .gm-input:focus {
+        border-color: #f97316;
+        box-shadow: 0 0 0 3px rgba(249,115,22,0.12);
+        background: #fff;
+    }
+
+    .gm-input::placeholder { color: #cbd5e1; }
+
+    .gm-textarea {
+        width: 100%;
+        padding: 0.7rem 0.875rem;
+        border: 1.5px solid #e2e8f0;
+        border-radius: 0.75rem;
+        font-size: 0.9375rem;
+        color: #0f172a;
+        background: #fafafa;
+        resize: vertical;
+        min-height: 64px;
+        font-family: inherit;
+        transition: border-color 0.2s, box-shadow 0.2s;
+        outline: none;
+        box-sizing: border-box;
+    }
+
+    .gm-textarea:focus {
+        border-color: #f97316;
+        box-shadow: 0 0 0 3px rgba(249,115,22,0.12);
+        background: #fff;
+    }
+
+    .gm-textarea::placeholder { color: #cbd5e1; }
+
+    /* Type pills */
+    .gm-type-pills {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 0.5rem;
+    }
+
+    .gm-pill {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.625rem 0.25rem;
+        border: 1.5px solid #e2e8f0;
+        border-radius: 0.875rem;
+        background: #fafafa;
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: #64748b;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+
+    .gm-pill:hover { background: #f1f5f9; }
+
+    .gm-pill.active.pill-workout   { border-color: #3b82f6; background: #eff6ff; color: #1d4ed8; }
+    .gm-pill.active.pill-weight    { border-color: #10b981; background: #ecfdf5; color: #065f46; }
+    .gm-pill.active.pill-strength  { border-color: #f97316; background: #fff7ed; color: #c2410c; }
+    .gm-pill.active.pill-endurance { border-color: #8b5cf6; background: #f5f3ff; color: #6d28d9; }
+
+    /* Two-col row */
+    .gm-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+    }
+
+    @media (max-width: 480px) {
+        .gm-row { grid-template-columns: 1fr; }
+        .gm-type-pills { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    /* Footer */
+    .gm-footer {
         display: flex;
         justify-content: flex-end;
+        align-items: center;
         gap: 0.75rem;
-        padding: 1rem 1.5rem;
-        border-top: 1px solid #e2e8f0;
+        padding: 1.125rem 1.5rem;
+        border-top: 1px solid #f1f5f9;
+        flex-shrink: 0;
     }
 
-    .btn-outline {
-        padding: 0.5rem 1rem;
-        background: white;
+    .gm-btn-cancel {
+        padding: 0.625rem 1.25rem;
+        background: #f8fafc;
         border: 1px solid #e2e8f0;
-        border-radius: 0.5rem;
+        border-radius: 0.75rem;
+        font-size: 0.875rem;
         font-weight: 500;
+        color: #475569;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+
+    .gm-btn-cancel:hover { background: #f1f5f9; }
+
+    .gm-btn-save {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.625rem 1.5rem;
+        background: linear-gradient(135deg, #f97316, #ea580c);
+        border: none;
+        border-radius: 0.75rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: white;
         cursor: pointer;
         transition: all 0.2s;
     }
 
-        .btn-outline:hover {
-            background: #f8fafc;
-        }
+    .gm-btn-save:hover:not(:disabled) {
+        box-shadow: 0 6px 16px rgba(249,115,22,0.35);
+        transform: translateY(-1px);
+    }
+
+    .gm-btn-save:disabled { opacity: 0.65; cursor: not-allowed; }
+
+    /* Modal animation */
+    .modal-anim-enter-active { transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
+    .modal-anim-leave-active { transition: all 0.2s ease; }
+    .modal-anim-enter-from  { opacity: 0; }
+    .modal-anim-leave-to    { opacity: 0; }
+    .modal-anim-enter-from .gm-panel  { transform: scale(0.95) translateY(12px); }
+    .modal-anim-leave-to .gm-panel    { transform: scale(0.97) translateY(4px); }
+
+    /* ── Password strength indicator ────────────────────── */
+    .pw-rules {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        padding: 0.625rem 0.75rem;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.625rem;
+        margin-top: 0.125rem;
+    }
+
+    .pw-rule {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.78rem;
+        color: #94a3b8;
+        transition: color 0.2s;
+    }
+
+    .pw-rule.met { color: #10b981; }
+
+    .pw-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #cbd5e1;
+        flex-shrink: 0;
+        transition: background 0.2s;
+    }
+
+    .pw-rule.met .pw-dot { background: #10b981; }
 
     .form-row {
         display: grid;
