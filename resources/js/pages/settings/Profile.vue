@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, watch } from 'vue';
 import DeleteUser from '@/components/DeleteUser.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
@@ -16,12 +16,20 @@ axios.defaults.withCredentials = true;
 axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
 axios.defaults.headers.common['Accept'] = 'application/json';
 
+interface Exercise {
+    id: number;
+    name: string;
+    muscle_group: string;
+}
+
 interface Goal {
     id: number;
     user_id: number;
     title: string;
     description: string | null;
     type: 'workout' | 'weight' | 'strength' | 'endurance';
+    exercise_id: number | null;
+    exercise: Exercise | null;
     target_value: number;
     current_value: number;
     unit: string | null;
@@ -35,6 +43,7 @@ interface GoalForm {
     title: string;
     description: string;
     type: 'workout' | 'weight' | 'strength' | 'endurance';
+    exercise_id: string;
     target_value: string;
     unit: string;
     deadline: string;
@@ -134,9 +143,47 @@ const goalForm = ref<GoalForm>({
     title: '',
     description: '',
     type: 'workout',
+    exercise_id: '',
     target_value: '',
     unit: '',
-    deadline: ''
+    deadline: '',
+});
+
+// Strength exercises for the goal form picker
+const strengthExercises = ref<Exercise[]>([]);
+
+const loadStrengthExercises = async () => {
+    if (strengthExercises.value.length) return;
+    try {
+        const res = await axios.get('/api/exercises/strength');
+        strengthExercises.value = res.data;
+    } catch {
+        // silently ignore — picker just stays empty
+    }
+};
+
+// Group strength exercises by muscle group for the optgroup picker
+const groupedStrengthExercises = computed(() => {
+    const map = new Map<string, Exercise[]>();
+    for (const ex of strengthExercises.value) {
+        const g = ex.muscle_group || 'Citi';
+        if (!map.has(g)) map.set(g, []);
+        map.get(g)!.push(ex);
+    }
+    return Array.from(map.entries()).map(([label, exercises]) => ({ label, exercises }));
+});
+
+// Auto-set sensible unit when goal type changes
+watch(() => goalForm.value.type, (type) => {
+    const defaults: Record<string, string> = {
+        workout: 'treniņi',
+        strength: 'kg',
+        endurance: 'min',
+        weight: 'kg',
+    };
+    goalForm.value.unit = defaults[type] ?? '';
+    if (type !== 'strength') goalForm.value.exercise_id = '';
+    if (type === 'strength') loadStrengthExercises();
 });
 
 // Computed stats
@@ -169,6 +216,10 @@ const saveGoal = async () => {
         goalFormError.value = 'Lūdzu, ievadiet mērķa nosaukumu';
         return;
     }
+    if (goalForm.value.type === 'strength' && !goalForm.value.exercise_id) {
+        goalFormError.value = 'Spēka mērķim jāizvēlas vingrinājums';
+        return;
+    }
     if (!goalForm.value.target_value || parseFloat(goalForm.value.target_value) <= 0) {
         goalFormError.value = 'Lūdzu, ievadiet derīgu mērķa vērtību (lielāku par 0)';
         return;
@@ -178,13 +229,14 @@ const saveGoal = async () => {
         savingGoal.value = true;
         const isEditing = !!editingGoal.value;
 
-        const payload = {
+        const payload: Record<string, any> = {
             title: goalForm.value.title.trim(),
             description: goalForm.value.description.trim() || null,
             type: goalForm.value.type,
+            exercise_id: goalForm.value.exercise_id ? parseInt(goalForm.value.exercise_id) : null,
             target_value: parseFloat(goalForm.value.target_value),
             unit: goalForm.value.unit.trim() || null,
-            deadline: goalForm.value.deadline || null
+            deadline: goalForm.value.deadline || null,
         };
 
         if (editingGoal.value) {
@@ -216,9 +268,10 @@ const editGoal = (goal: Goal) => {
         title: goal.title,
         description: goal.description || '',
         type: goal.type,
+        exercise_id: goal.exercise_id?.toString() || '',
         target_value: goal.target_value.toString(),
         unit: goal.unit || '',
-        deadline: goal.deadline || ''
+        deadline: goal.deadline || '',
     };
     showGoalForm.value = true;
 };
@@ -260,9 +313,10 @@ const resetGoalForm = () => {
         title: '',
         description: '',
         type: 'workout',
+        exercise_id: '',
         target_value: '',
         unit: '',
-        deadline: ''
+        deadline: '',
     };
 };
 
@@ -568,6 +622,25 @@ onMounted(() => {
                                                         <input v-model="goalForm.title" class="gm-input" placeholder="Piemēram: Noskriet 5 km" @input="goalFormError = ''" />
                                                     </div>
 
+                                                    <!-- Exercise picker — strength only -->
+                                                    <div v-if="goalForm.type === 'strength'" class="gm-field">
+                                                        <label class="gm-label">Vingrinājums <span class="gm-required">*</span></label>
+                                                        <select v-model="goalForm.exercise_id" class="gm-input gm-select" @change="goalFormError = ''">
+                                                            <option value="">— izvēlies vingrinājumu —</option>
+                                                            <optgroup v-for="group in groupedStrengthExercises" :key="group.label" :label="group.label">
+                                                                <option v-for="ex in group.exercises" :key="ex.id" :value="ex.id.toString()">{{ ex.name }}</option>
+                                                            </optgroup>
+                                                        </select>
+                                                    </div>
+
+                                                    <!-- Auto-track info banner -->
+                                                    <div v-if="goalForm.type !== 'weight'" class="gm-auto-info">
+                                                        <Zap :size="14" />
+                                                        <span v-if="goalForm.type === 'workout'">Automātiski atjaunojas pēc katra pabeigta treniņa</span>
+                                                        <span v-else-if="goalForm.type === 'strength'">Atjaunojas kad uzstādīts jauns personīgais rekords izvēlētajā vingrinājumā</span>
+                                                        <span v-else-if="goalForm.type === 'endurance'">Uzkrājas kopējais kardio laiks no visiem treniņiem</span>
+                                                    </div>
+
                                                     <!-- Description -->
                                                     <div class="gm-field">
                                                         <label class="gm-label">Apraksts <span class="gm-optional">— pēc izvēles</span></label>
@@ -577,12 +650,18 @@ onMounted(() => {
                                                     <!-- Value + Unit -->
                                                     <div class="gm-row">
                                                         <div class="gm-field">
-                                                            <label class="gm-label">Mērķa vērtība <span class="gm-required">*</span></label>
-                                                            <input v-model="goalForm.target_value" type="number" min="0.01" step="any" class="gm-input" placeholder="100" @input="goalFormError = ''" />
+                                                            <label class="gm-label">
+                                                                Mērķa vērtība <span class="gm-required">*</span>
+                                                            </label>
+                                                            <input v-model="goalForm.target_value" type="number" min="0.01" step="any" class="gm-input"
+                                                                :placeholder="goalForm.type === 'workout' ? '50' : goalForm.type === 'endurance' ? '120' : '100'"
+                                                                @input="goalFormError = ''" />
                                                         </div>
                                                         <div class="gm-field">
-                                                            <label class="gm-label">Mērvienība <span class="gm-optional">— pēc izvēles</span></label>
-                                                            <input v-model="goalForm.unit" class="gm-input" placeholder="kg, km, min..." />
+                                                            <label class="gm-label">Mērvienība</label>
+                                                            <input v-model="goalForm.unit" class="gm-input"
+                                                                :placeholder="goalForm.type === 'workout' ? 'treniņi' : goalForm.type === 'endurance' ? 'min' : 'kg'"
+                                                                :readonly="goalForm.type !== 'weight'" />
                                                         </div>
                                                     </div>
 
@@ -654,6 +733,10 @@ onMounted(() => {
                                             </div>
                                         </div>
                                         <h4 class="goal-title">{{ goal.title }}</h4>
+                                        <p v-if="goal.exercise" class="goal-exercise-name">
+                                            <Dumbbell :size="12" />
+                                            {{ goal.exercise.name }}
+                                        </p>
                                         <p v-if="goal.description" class="goal-description">{{ goal.description }}</p>
 
                                         <!-- Progress Bar -->
@@ -675,11 +758,25 @@ onMounted(() => {
                                         </div>
 
                                         <div class="goal-footer">
-                                            <button @click="toggleGoalCompletion(goal.id)" :disabled="processingGoalId === goal.id" class="complete-btn" :class="{ completed: goal.completed }">
-                                                <CheckCircle v-if="goal.completed" :size="16" />
-                                                <span v-else class="circle-outline"></span>
-                                                {{ goal.completed ? 'Pabeigts' : 'Atzīmēt kā pabeigtu' }}
-                                            </button>
+                                            <!-- Auto-tracked: show status badge only, no manual button -->
+                                            <template v-if="goal.type !== 'weight'">
+                                                <span v-if="goal.completed" class="auto-complete-badge">
+                                                    <CheckCircle :size="13" />
+                                                    Automātiski sasniegts!
+                                                </span>
+                                                <span v-else class="auto-track-badge">
+                                                    <Zap :size="12" />
+                                                    Auto-izsekots
+                                                </span>
+                                            </template>
+                                            <!-- Weight goals: manual toggle -->
+                                            <template v-else>
+                                                <button @click="toggleGoalCompletion(goal.id)" :disabled="processingGoalId === goal.id" class="complete-btn" :class="{ completed: goal.completed }">
+                                                    <CheckCircle v-if="goal.completed" :size="16" />
+                                                    <span v-else class="circle-outline"></span>
+                                                    {{ goal.completed ? 'Pabeigts' : 'Atzīmēt kā pabeigtu' }}
+                                                </button>
+                                            </template>
                                             <div v-if="goal.completed" class="achievement-badge">
                                                 <Medal :size="14" />
                                                 <span>Sasniegts!</span>
@@ -1658,6 +1755,58 @@ onMounted(() => {
         font-size: 0.95rem;
         background: white;
         cursor: pointer;
+    }
+
+    /* Auto-track info banner in modal */
+    .gm-auto-info {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        border-radius: 0.625rem;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.78rem;
+        color: #1d4ed8;
+    }
+
+    .gm-select {
+        appearance: none;
+        cursor: pointer;
+    }
+
+    /* Goal card extras */
+    .goal-exercise-name {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-size: 0.75rem;
+        color: #64748b;
+        margin: 0 0 0.25rem;
+    }
+
+    .auto-track-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-size: 0.72rem;
+        font-weight: 500;
+        color: #6366f1;
+        background: #eef2ff;
+        padding: 0.2rem 0.5rem;
+        border-radius: 100px;
+    }
+
+    .auto-complete-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: #059669;
+        background: #ecfdf5;
+        padding: 0.2rem 0.5rem;
+        border-radius: 100px;
     }
 
     /* Goals List */

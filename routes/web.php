@@ -34,10 +34,12 @@ Route::middleware(['auth', 'admin'])->group(function () {
 
 // Mērķu API
 Route::prefix('api')->middleware('auth')->group(function () {
-    Route::get('/goals',          [GoalController::class, 'index']);
-    Route::post('/goals',         [GoalController::class, 'store']);
-    Route::put('/goals/{goal}',   [GoalController::class, 'update']);
-    Route::delete('/goals/{goal}',[GoalController::class, 'destroy']);
+    Route::get('/goals',              [GoalController::class, 'index']);
+    Route::post('/goals',             [GoalController::class, 'store']);
+    Route::put('/goals/{goal}',       [GoalController::class, 'update']);
+    Route::delete('/goals/{goal}',    [GoalController::class, 'destroy']);
+    Route::post('/goals/recalculate', [GoalController::class, 'recalculate']);
+    Route::get('/exercises/strength', [GoalController::class, 'strengthExercises']);
 });
 
 // Treniņu maršruti

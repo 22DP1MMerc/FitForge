@@ -7,6 +7,7 @@ use App\Models\Routine;
 use App\Models\WorkoutLog;
 use App\Models\WorkoutSession;
 use App\Models\WorkoutSessionExercise;
+use App\Services\GoalProgressService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -178,6 +179,9 @@ class WorkoutController extends Controller
                 'notes'               => $ex->notes ?? '',
             ]);
         }
+
+        // Auto-update goal progress after each completed workout
+        app(GoalProgressService::class)->updateForUser(Auth::user());
 
         return response()->json([
             'success'      => true,
