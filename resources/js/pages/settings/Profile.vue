@@ -659,9 +659,24 @@ onMounted(() => {
                                                         </div>
                                                         <div class="gm-field">
                                                             <label class="gm-label">Mērvienība</label>
-                                                            <input v-model="goalForm.unit" class="gm-input"
-                                                                :placeholder="goalForm.type === 'workout' ? 'treniņi' : goalForm.type === 'endurance' ? 'min' : 'kg'"
-                                                                :readonly="goalForm.type !== 'weight'" />
+                                                            <select v-model="goalForm.unit" class="gm-input gm-select">
+                                                                <template v-if="goalForm.type === 'workout'">
+                                                                    <option value="treniņi">treniņi</option>
+                                                                </template>
+                                                                <template v-else-if="goalForm.type === 'strength'">
+                                                                    <option value="kg">kg</option>
+                                                                    <option value="lbs">lbs</option>
+                                                                </template>
+                                                                <template v-else-if="goalForm.type === 'endurance'">
+                                                                    <option value="min">min</option>
+                                                                    <option value="km">km</option>
+                                                                    <option value="soļi">soļi</option>
+                                                                </template>
+                                                                <template v-else-if="goalForm.type === 'weight'">
+                                                                    <option value="kg">kg</option>
+                                                                    <option value="lbs">lbs</option>
+                                                                </template>
+                                                            </select>
                                                         </div>
                                                     </div>
 
