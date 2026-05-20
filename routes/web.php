@@ -5,7 +5,6 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ExerciseController;
 use App\Http\Controllers\GoalController;
 use App\Http\Controllers\RoutineController;
-use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\WorkoutController;
 use App\Http\Controllers\WorkoutLogController;
 use Illuminate\Support\Facades\Auth;
@@ -80,13 +79,6 @@ Route::resource('routines', RoutineController::class)
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 });
-
-// Profils
-// Route::middleware('auth')->group(function () {
-//    Route::get('/profile',    [ProfileController::class, 'edit'])->name('profile.edit');
-//    Route::patch('/profile',  [ProfileController::class, 'update'])->name('profile.update');
-//    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
-//});
 
 // Treniņu žurnāls
 Route::middleware('auth')->prefix('workout-logs')->group(function () {
