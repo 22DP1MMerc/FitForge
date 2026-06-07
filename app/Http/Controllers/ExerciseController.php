@@ -101,6 +101,8 @@ class ExerciseController extends Controller
     {
         $this->authorizeAdmin();
 
+        error_log('Exercise update: content_type=' . $request->header('Content-Type') . ' has_file=' . ($request->hasFile('image') ? 'true' : 'false') . ' files=' . implode(',', array_keys($request->files->all())));
+
         $rules = [
             'name'         => 'required|string|max:255|unique:exercises,name,' . $exercise->id,
             'description'  => 'nullable|string|max:1000',
