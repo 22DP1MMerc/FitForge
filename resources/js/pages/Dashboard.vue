@@ -732,13 +732,13 @@ onMounted(() => {
                                             {{ getGoalTypeConfig(goal.type).name }}
                                         </span>
                                         <div class="goal-card-actions">
-                                            <button @click="editGoal(goal)" class="goal-act-btn goal-act-edit"><Edit :size="14" /></button>
+                                            <button @click="editGoal(goal)" class="goal-act-btn goal-act-edit"><Edit :size="14" color="#3b82f6" /></button>
                                             <div v-if="deleteConfirmId === goal.id" class="del-confirm">
                                                 <span>Dzēst?</span>
                                                 <button @click="deleteGoal(goal.id)" class="del-yes">Jā</button>
                                                 <button @click="deleteConfirmId = null" class="del-no">Nē</button>
                                             </div>
-                                            <button v-else @click="deleteConfirmId = goal.id" class="goal-act-btn goal-act-del"><Trash2 :size="14" /></button>
+                                            <button v-else @click="deleteConfirmId = goal.id" class="goal-act-btn goal-act-del"><Trash2 :size="14" color="#ef4444" /></button>
                                         </div>
                                     </div>
                                     <div class="goal-card-title">{{ goal.title }}</div>
@@ -1755,6 +1755,7 @@ onMounted(() => {
     .goal-act-btn {
         width: 26px;
         height: 26px;
+        padding: 0;
         border-radius: 0.375rem;
         display: flex;
         align-items: center;

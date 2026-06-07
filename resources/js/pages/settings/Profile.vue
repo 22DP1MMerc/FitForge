@@ -112,205 +112,170 @@ const updatePassword = () => {
                 </div>
 
                 <div class="content-grid">
-                    <div class="left-column">
-                        <!-- Profile Card -->
-                        <div class="card-modern">
-                            <div class="card-header-modern">
-                                <div class="header-left">
-                                    <div class="header-icon profile-icon">
-                                        <User />
-                                    </div>
-                                    <div>
-                                        <h2 class="card-title">Profila informācija</h2>
-                                        <p class="card-subtitle">Atjaunini savus personas datus</p>
-                                    </div>
+                    <!-- Left: Profile Info -->
+                    <div class="card-modern">
+                        <div class="card-header-modern">
+                            <div class="header-left">
+                                <div class="header-icon profile-icon">
+                                    <User />
+                                </div>
+                                <div>
+                                    <h2 class="card-title">Profila informācija</h2>
+                                    <p class="card-subtitle">Atjaunini savus personas datus</p>
                                 </div>
                             </div>
-                            <div class="card-divider"></div>
-                            <div class="card-body">
-                                <form @submit.prevent="submit" class="form-stack">
-                                    <div class="form-group">
-                                        <Label class="form-label">Vārds</Label>
-                                        <div class="input-group">
-                                            <User class="input-icon" />
-                                            <Input v-model="form.name" required placeholder="Tavs vārds" :class="{ 'error': form.errors.name }" />
-                                        </div>
-                                        <InputError :message="form.errors.name" />
-                                    </div>
-
-                                    <div class="form-group">
-                                        <Label class="form-label">E-pasta adrese</Label>
-                                        <div class="input-group">
-                                            <Mail class="input-icon" />
-                                            <Input v-model="form.email" type="email" required placeholder="tavs@epasts.lv" :class="{ 'error': form.errors.email }" />
-                                        </div>
-                                        <InputError :message="form.errors.email" />
-                                    </div>
-
-                                    <div v-if="mustVerifyEmail && !user.email_verified_at" class="alert-warning">
-                                        <ShieldAlert class="alert-icon" />
-                                        <div>
-                                            <p class="alert-title">E-pasts nav verificēts</p>
-                                            <p class="alert-text">
-                                                Lūdzu, verificē savu e-pasta adresi.
-                                                <Link :href="route('verification.send')" method="post" as="button" class="alert-link">
-                                                Nosūtīt verifikāciju vēlreiz
-                                                </Link>
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    <div v-if="status === 'verification-link-sent'" class="alert-success">
-                                        <CheckCircle class="alert-icon" />
-                                        <div>
-                                            <p class="alert-title">Verifikācija nosūtīta!</p>
-                                            <p class="alert-text">Jauns verifikācijas e-pasts ir nosūtīts uz tavu adresi.</p>
-                                        </div>
-                                    </div>
-
-                                    <div class="form-actions">
-                                        <Button type="submit" :disabled="form.processing" class="btn-primary">
-                                            <Loader2 v-if="form.processing" class="btn-icon animate-spin" />
-                                            <CheckCircle v-else class="btn-icon" />
-                                            {{ form.processing ? 'Saglabā...' : 'Saglabāt izmaiņas' }}
-                                        </Button>
-                                        <Transition name="fade">
-                                            <div v-show="form.recentlySuccessful" class="success-badge">
-                                                <CheckCircle class="success-icon" />
-                                                <span>Saglabāts!</span>
-                                            </div>
-                                        </Transition>
-                                    </div>
-                                </form>
-                            </div>
                         </div>
-
-                        <!-- Password Card -->
-                        <div class="card-modern">
-                            <div class="card-header-modern">
-                                <div class="header-left">
-                                    <div class="header-icon password-icon">
-                                        <Lock />
+                        <div class="card-divider"></div>
+                        <div class="card-body">
+                            <form @submit.prevent="submit" class="form-stack">
+                                <div class="form-group">
+                                    <Label class="form-label">Vārds</Label>
+                                    <div class="input-group">
+                                        <User class="input-icon" />
+                                        <Input v-model="form.name" required placeholder="Tavs vārds" :class="{ 'error': form.errors.name }" />
                                     </div>
+                                    <InputError :message="form.errors.name" />
+                                </div>
+
+                                <div class="form-group">
+                                    <Label class="form-label">E-pasta adrese</Label>
+                                    <div class="input-group">
+                                        <Mail class="input-icon" />
+                                        <Input v-model="form.email" type="email" required placeholder="tavs@epasts.lv" :class="{ 'error': form.errors.email }" />
+                                    </div>
+                                    <InputError :message="form.errors.email" />
+                                </div>
+
+                                <div v-if="mustVerifyEmail && !user.email_verified_at" class="alert-warning">
+                                    <ShieldAlert class="alert-icon" />
                                     <div>
-                                        <h2 class="card-title">Drošība</h2>
-                                        <p class="card-subtitle">Maini paroli un uzlabo konta drošību</p>
+                                        <p class="alert-title">E-pasts nav verificēts</p>
+                                        <p class="alert-text">
+                                            Lūdzu, verificē savu e-pasta adresi.
+                                            <Link :href="route('verification.send')" method="post" as="button" class="alert-link">
+                                            Nosūtīt verifikāciju vēlreiz
+                                            </Link>
+                                        </p>
                                     </div>
                                 </div>
-                            </div>
-                            <div class="card-divider"></div>
-                            <div class="card-body">
-                                <form @submit.prevent="updatePassword" class="form-stack">
-                                    <div class="form-group">
-                                        <Label class="form-label">Pašreizējā parole</Label>
-                                        <div class="input-group">
-                                            <Lock class="input-icon" />
-                                            <Input :type="showPassword ? 'text' : 'password'" v-model="passwordForm.current_password" required placeholder="Ievadi pašreizējo paroli" />
-                                            <button type="button" @click="showPassword = !showPassword" class="toggle-password">
-                                                <EyeOff v-if="showPassword" :size="18" />
-                                                <Eye v-else :size="18" />
-                                            </button>
-                                        </div>
-                                        <InputError :message="passwordForm.errors.current_password" />
-                                    </div>
 
-                                    <div class="form-group">
-                                        <Label class="form-label">Jaunā parole</Label>
-                                        <div class="input-group">
-                                            <Lock class="input-icon" />
-                                            <Input :type="showNewPassword ? 'text' : 'password'" v-model="passwordForm.password" required placeholder="Ievadi jauno paroli" />
-                                            <button type="button" @click="showNewPassword = !showNewPassword" class="toggle-password">
-                                                <EyeOff v-if="showNewPassword" :size="18" />
-                                                <Eye v-else :size="18" />
-                                            </button>
-                                        </div>
-                                        <div v-if="passwordForm.password.length > 0" class="pw-rules">
-                                            <div class="pw-rule" :class="{ met: passwordStrength.minLength }">
-                                                <span class="pw-dot"></span> Vismaz 8 rakstzīmes
-                                            </div>
-                                            <div class="pw-rule" :class="{ met: passwordStrength.hasUppercase }">
-                                                <span class="pw-dot"></span> Lielais burts (A–Z)
-                                            </div>
-                                            <div class="pw-rule" :class="{ met: passwordStrength.hasNumberOrSymbol }">
-                                                <span class="pw-dot"></span> Cipars vai simbols
-                                            </div>
-                                        </div>
-                                        <InputError :message="passwordForm.errors.password" />
+                                <div v-if="status === 'verification-link-sent'" class="alert-success">
+                                    <CheckCircle class="alert-icon" />
+                                    <div>
+                                        <p class="alert-title">Verifikācija nosūtīta!</p>
+                                        <p class="alert-text">Jauns verifikācijas e-pasts ir nosūtīts uz tavu adresi.</p>
                                     </div>
+                                </div>
 
-                                    <div class="form-group">
-                                        <Label class="form-label">Apstiprini jauno paroli</Label>
-                                        <div class="input-group">
-                                            <Lock class="input-icon" />
-                                            <Input :type="showConfirmPassword ? 'text' : 'password'" v-model="passwordForm.password_confirmation" required placeholder="Apstiprini jauno paroli" />
-                                            <button type="button" @click="showConfirmPassword = !showConfirmPassword" class="toggle-password">
-                                                <EyeOff v-if="showConfirmPassword" :size="18" />
-                                                <Eye v-else :size="18" />
-                                            </button>
+                                <div class="form-actions">
+                                    <Button type="submit" :disabled="form.processing" class="btn-primary">
+                                        <Loader2 v-if="form.processing" class="btn-icon animate-spin" />
+                                        <CheckCircle v-else class="btn-icon" />
+                                        {{ form.processing ? 'Saglabā...' : 'Saglabāt izmaiņas' }}
+                                    </Button>
+                                    <Transition name="fade">
+                                        <div v-show="form.recentlySuccessful" class="success-badge">
+                                            <CheckCircle class="success-icon" />
+                                            <span>Saglabāts!</span>
                                         </div>
-                                        <p v-if="passwordForm.password_confirmation && passwordForm.password !== passwordForm.password_confirmation && !passwordForm.errors.password_confirmation" class="password-hint mismatch">
-                                            Paroles nesakrīt
-                                        </p>
-                                        <p v-else-if="passwordForm.password_confirmation && passwordForm.password === passwordForm.password_confirmation" class="password-hint match">
-                                            Paroles sakrīt
-                                        </p>
-                                        <InputError :message="passwordForm.errors.password_confirmation" />
-                                    </div>
-
-                                    <div class="form-actions">
-                                        <Button type="submit" :disabled="passwordForm.processing" class="btn-primary btn-secondary">
-                                            <Loader2 v-if="passwordForm.processing" class="btn-icon animate-spin" />
-                                            <ShieldAlert v-else class="btn-icon" />
-                                            {{ passwordForm.processing ? 'Atjaunina...' : 'Mainīt paroli' }}
-                                        </Button>
-                                        <Transition name="fade">
-                                            <div v-show="passwordForm.recentlySuccessful" class="success-badge">
-                                                <CheckCircle class="success-icon" />
-                                                <span>Parole nomainīta!</span>
-                                            </div>
-                                        </Transition>
-                                    </div>
-                                </form>
-                            </div>
+                                    </Transition>
+                                </div>
+                            </form>
                         </div>
-
-                        <DeleteUser />
                     </div>
-                    <div class="right-column">
-                        <div class="card-modern tips-card">
-                            <div class="card-header-modern">
-                                <div class="header-left">
-                                    <div class="header-icon tips-icon">
-                                        <Sparkles />
-                                    </div>
-                                    <div>
-                                        <h2 class="card-title">Padomi panākumiem</h2>
-                                        <p class="card-subtitle">Kā sasniegt savus mērķus</p>
-                                    </div>
+
+                    <!-- Right: Password -->
+                    <div class="card-modern">
+                        <div class="card-header-modern">
+                            <div class="header-left">
+                                <div class="header-icon password-icon">
+                                    <Lock />
+                                </div>
+                                <div>
+                                    <h2 class="card-title">Drošība</h2>
+                                    <p class="card-subtitle">Maini paroli un uzlabo konta drošību</p>
                                 </div>
                             </div>
-                            <div class="card-divider"></div>
-                            <div class="card-body">
-                                <ul class="tips-list">
-                                    <li class="tip-item">
-                                        <div class="tip-dot"></div>
-                                        <span>Nosaki konkrētus un izmērāmus mērķus</span>
-                                    </li>
-                                    <li class="tip-item">
-                                        <div class="tip-dot"></div>
-                                        <span>Sadalīti lielus mērķus mazākos posmos</span>
-                                    </li>
-                                    <li class="tip-item">
-                                        <div class="tip-dot"></div>
-                                        <span>Regulāri seko līdzi savam progresam</span>
-                                    </li>
-                                    <li class="tip-item">
-                                        <div class="tip-dot"></div>
-                                        <span>Atzīmē katru sasniegumu - tas motivē!</span>
-                                    </li>
-                                </ul>
-                            </div>
                         </div>
+                        <div class="card-divider"></div>
+                        <div class="card-body">
+                            <form @submit.prevent="updatePassword" class="form-stack">
+                                <div class="form-group">
+                                    <Label class="form-label">Pašreizējā parole</Label>
+                                    <div class="input-group">
+                                        <Lock class="input-icon" />
+                                        <Input :type="showPassword ? 'text' : 'password'" v-model="passwordForm.current_password" required placeholder="Ievadi pašreizējo paroli" />
+                                        <button type="button" @click="showPassword = !showPassword" class="toggle-password">
+                                            <EyeOff v-if="showPassword" :size="18" />
+                                            <Eye v-else :size="18" />
+                                        </button>
+                                    </div>
+                                    <InputError :message="passwordForm.errors.current_password" />
+                                </div>
+
+                                <div class="form-group">
+                                    <Label class="form-label">Jaunā parole</Label>
+                                    <div class="input-group">
+                                        <Lock class="input-icon" />
+                                        <Input :type="showNewPassword ? 'text' : 'password'" v-model="passwordForm.password" required placeholder="Ievadi jauno paroli" />
+                                        <button type="button" @click="showNewPassword = !showNewPassword" class="toggle-password">
+                                            <EyeOff v-if="showNewPassword" :size="18" />
+                                            <Eye v-else :size="18" />
+                                        </button>
+                                    </div>
+                                    <div v-if="passwordForm.password.length > 0" class="pw-rules">
+                                        <div class="pw-rule" :class="{ met: passwordStrength.minLength }">
+                                            <span class="pw-dot"></span> Vismaz 8 rakstzīmes
+                                        </div>
+                                        <div class="pw-rule" :class="{ met: passwordStrength.hasUppercase }">
+                                            <span class="pw-dot"></span> Lielais burts (A–Z)
+                                        </div>
+                                        <div class="pw-rule" :class="{ met: passwordStrength.hasNumberOrSymbol }">
+                                            <span class="pw-dot"></span> Cipars vai simbols
+                                        </div>
+                                    </div>
+                                    <InputError :message="passwordForm.errors.password" />
+                                </div>
+
+                                <div class="form-group">
+                                    <Label class="form-label">Apstiprini jauno paroli</Label>
+                                    <div class="input-group">
+                                        <Lock class="input-icon" />
+                                        <Input :type="showConfirmPassword ? 'text' : 'password'" v-model="passwordForm.password_confirmation" required placeholder="Apstiprini jauno paroli" />
+                                        <button type="button" @click="showConfirmPassword = !showConfirmPassword" class="toggle-password">
+                                            <EyeOff v-if="showConfirmPassword" :size="18" />
+                                            <Eye v-else :size="18" />
+                                        </button>
+                                    </div>
+                                    <p v-if="passwordForm.password_confirmation && passwordForm.password !== passwordForm.password_confirmation && !passwordForm.errors.password_confirmation" class="password-hint mismatch">
+                                        Paroles nesakrīt
+                                    </p>
+                                    <p v-else-if="passwordForm.password_confirmation && passwordForm.password === passwordForm.password_confirmation" class="password-hint match">
+                                        Paroles sakrīt
+                                    </p>
+                                    <InputError :message="passwordForm.errors.password_confirmation" />
+                                </div>
+
+                                <div class="form-actions">
+                                    <Button type="submit" :disabled="passwordForm.processing" class="btn-primary btn-secondary">
+                                        <Loader2 v-if="passwordForm.processing" class="btn-icon animate-spin" />
+                                        <ShieldAlert v-else class="btn-icon" />
+                                        {{ passwordForm.processing ? 'Atjaunina...' : 'Mainīt paroli' }}
+                                    </Button>
+                                    <Transition name="fade">
+                                        <div v-show="passwordForm.recentlySuccessful" class="success-badge">
+                                            <CheckCircle class="success-icon" />
+                                            <span>Parole nomainīta!</span>
+                                        </div>
+                                    </Transition>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Bottom full-width: Delete account -->
+                    <div class="delete-row">
+                        <DeleteUser />
                     </div>
                 </div>
             </div>
@@ -444,26 +409,23 @@ const updatePassword = () => {
     /* Grid Layout */
     .content-grid {
         display: grid;
-        grid-template-columns: 2fr 1fr;
+        grid-template-columns: 1fr 1fr;
         gap: 1.5rem;
+        align-items: start;
     }
 
-    @media (max-width: 1024px) {
+    .delete-row {
+        grid-column: 1 / -1;
+    }
+
+    @media (max-width: 768px) {
         .content-grid {
             grid-template-columns: 1fr;
         }
-    }
 
-    .left-column {
-        display: flex;
-        flex-direction: column;
-        gap: 1.5rem;
-    }
-
-    .right-column {
-        display: flex;
-        flex-direction: column;
-        gap: 1.5rem;
+        .delete-row {
+            grid-column: 1;
+        }
     }
 
     /* Modern Card */
