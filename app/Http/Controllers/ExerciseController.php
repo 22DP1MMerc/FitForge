@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Exercise;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 
 class ExerciseController extends Controller
@@ -55,14 +56,24 @@ class ExerciseController extends Controller
     {
         $this->authorizeAdmin();
 
-        $validated = $request->validate([
+        $rules = [
             'name'         => 'required|string|max:255|unique:exercises,name',
             'description'  => 'nullable|string|max:1000',
             'muscle_group' => 'required|string|max:100',
             'equipment'    => 'required|string|max:100',
             'type'         => 'nullable|in:strength,cardio',
-            'image'        => 'nullable|url|max:500',
-        ]);
+        ];
+        if ($request->hasFile('image')) {
+            $rules['image'] = 'file|image|max:4096';
+        }
+
+        $validated = $request->validate($rules);
+
+        if ($request->hasFile('image')) {
+            $validated['image'] = $request->file('image')->store('exercises', 'public');
+        } else {
+            $validated['image'] = null;
+        }
 
         Exercise::create($validated);
 
@@ -74,7 +85,7 @@ class ExerciseController extends Controller
     {
         $this->authorizeAdmin();
         return Inertia::render('Exercises/Edit', array_merge(
-            ['exercise' => $exercise],
+            ['exercise' => $exercise->append('image_url')],
             $this->formOptions()
         ));
     }
@@ -83,14 +94,28 @@ class ExerciseController extends Controller
     {
         $this->authorizeAdmin();
 
-        $validated = $request->validate([
+        $rules = [
             'name'         => 'required|string|max:255|unique:exercises,name,' . $exercise->id,
             'description'  => 'nullable|string|max:1000',
             'muscle_group' => 'required|string|max:100',
             'equipment'    => 'required|string|max:100',
             'type'         => 'nullable|in:strength,cardio',
-            'image'        => 'nullable|url|max:500',
-        ]);
+        ];
+        if ($request->hasFile('image')) {
+            $rules['image'] = 'file|image|max:4096';
+        }
+
+        $validated = $request->validate($rules);
+
+        if ($request->hasFile('image')) {
+            $this->deleteLocalImage($exercise->image);
+            $validated['image'] = $request->file('image')->store('exercises', 'public');
+        } elseif ($request->boolean('remove_image')) {
+            $this->deleteLocalImage($exercise->image);
+            $validated['image'] = null;
+        } else {
+            unset($validated['image']);
+        }
 
         $exercise->update($validated);
 
@@ -102,10 +127,18 @@ class ExerciseController extends Controller
     {
         $this->authorizeAdmin();
         $name = $exercise->name;
+        $this->deleteLocalImage($exercise->image);
         $exercise->delete();
 
         return redirect()->route('exercises.index')
             ->with('success', "Vingrinājums \"{$name}\" dzēsts!");
+    }
+
+    private function deleteLocalImage(?string $image): void
+    {
+        if ($image && !filter_var($image, FILTER_VALIDATE_URL)) {
+            Storage::disk('public')->delete($image);
+        }
     }
 
     public function filter(Request $request)

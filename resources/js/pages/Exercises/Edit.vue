@@ -16,18 +16,36 @@ const props = defineProps<{
     types:            string[];
 }>();
 
-// Tikai lauki kas ir DB
 const form = useForm({
     name:         props.exercise.name,
     description:  props.exercise.description  || '',
     muscle_group: props.exercise.muscle_group || '',
     equipment:    props.exercise.equipment    || '',
     type:         props.exercise.type         || 'strength',
-    image:        props.exercise.image        || '',
+    image:        null as File | null,
+    remove_image: false,
 });
 
 const customMuscleGroup = ref(!props.muscleGroups.includes(props.exercise.muscle_group));
 const customEquipment   = ref(!props.equipmentOptions.includes(props.exercise.equipment));
+
+const fileInputRef = ref<HTMLInputElement | null>(null);
+const imagePreview = ref<string | null>(props.exercise.image_url || null);
+
+const handleFileSelect = (e: Event) => {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    form.image = file;
+    form.remove_image = false;
+    imagePreview.value = URL.createObjectURL(file);
+};
+
+const clearImage = () => {
+    form.image = null;
+    form.remove_image = true;
+    imagePreview.value = null;
+    if (fileInputRef.value) fileInputRef.value.value = '';
+};
 
 const submitForm = () => {
     form.put(route('exercises.update', { exercise: props.exercise.id }), {
@@ -149,17 +167,22 @@ const deleteExercise = async () => {
                             <h2>Bilde</h2>
 
                             <div class="form-group">
-                                <label>Bildes URL</label>
-                                <input v-model="form.image"
-                                       type="url"
-                                       class="input"
-                                       :class="{ 'input--error': form.errors.image }"
-                                       placeholder="https://..." />
-                                <p v-if="form.errors.image" class="err">{{ form.errors.image }}</p>
-                                <!-- Priekšskatījums reāllaikā -->
-                                <div v-if="form.image" class="img-preview">
-                                    <img :src="form.image" alt="Priekšskatījums" />
+                                <label>Attēls (JPG, PNG, WebP — max 4 MB)</label>
+                                <div class="file-upload-area" :class="{ 'has-image': imagePreview }"
+                                     @click="fileInputRef?.click()">
+                                    <img v-if="imagePreview" :src="imagePreview" class="upload-preview" alt="Priekšskatījums" />
+                                    <div v-else class="upload-placeholder">
+                                        <svg width="32" height="32" fill="none" stroke="#9ca3af" stroke-width="1.5" viewBox="0 0 24 24">
+                                            <path d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+                                        </svg>
+                                        <span>Klikšķināt, lai izvēlētos attēlu</span>
+                                        <span class="upload-hint">vai ievelciet failu šeit</span>
+                                    </div>
+                                    <button v-if="imagePreview" type="button" class="clear-img-btn" @click.stop="clearImage">×</button>
                                 </div>
+                                <input ref="fileInputRef" type="file" accept="image/*"
+                                       class="hidden-file-input" @change="handleFileSelect" />
+                                <p v-if="form.errors.image" class="err">{{ form.errors.image }}</p>
                             </div>
                         </section>
 
@@ -323,21 +346,75 @@ const deleteExercise = async () => {
             border-color: #9ca3af;
         }
 
-    /* Bildes priekšskatījums */
-    .img-preview {
-        margin-top: 0.75rem;
-        border-radius: 0.5rem;
-        overflow: hidden;
-        border: 1px solid #e5e7eb;
+    .file-upload-area {
+        position: relative;
+        border: 2px dashed #d1d5db;
+        border-radius: 0.75rem;
         height: 180px;
-        background: #f3f4f6;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        overflow: hidden;
+        background: #f9fafb;
+        transition: border-color 0.2s, background 0.2s;
     }
 
-        .img-preview img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
+    .file-upload-area:hover {
+        border-color: #ff8c42;
+        background: #fff7f0;
+    }
+
+    .file-upload-area.has-image {
+        border-style: solid;
+        border-color: #e5e7eb;
+    }
+
+    .upload-preview {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .upload-placeholder {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+        color: #6b7280;
+        font-size: 0.875rem;
+        pointer-events: none;
+    }
+
+    .upload-hint {
+        font-size: 0.75rem;
+        color: #9ca3af;
+    }
+
+    .clear-img-btn {
+        position: absolute;
+        top: 0.5rem;
+        right: 0.5rem;
+        width: 1.75rem;
+        height: 1.75rem;
+        border-radius: 50%;
+        background: rgba(0,0,0,0.55);
+        color: white;
+        border: none;
+        font-size: 1rem;
+        line-height: 1;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.15s;
+    }
+
+    .clear-img-btn:hover { background: rgba(0,0,0,0.8); }
+
+    .hidden-file-input {
+        display: none;
+    }
 
     .form-actions {
         display: flex;
