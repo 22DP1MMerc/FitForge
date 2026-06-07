@@ -359,7 +359,7 @@ const submit = () => {
 
     .days-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr));
         gap: 1.5rem;
         padding: 2rem;
     }
@@ -623,5 +623,16 @@ const submit = () => {
             width: 100%;
             justify-content: center;
         }
+    }
+
+    @media (max-width: 375px) {
+        .page-title { font-size: 1.5rem; }
+        .section-title { font-size: 1.1rem; }
+
+        .form-grid, .days-grid { padding: 1rem; }
+
+        .exercise-input { font-size: 0.8rem; }
+
+        .sets-reps-grid { grid-template-columns: 1fr 1fr; gap: 0.5rem; }
     }
 </style>

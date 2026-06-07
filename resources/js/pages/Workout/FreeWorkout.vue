@@ -753,6 +753,16 @@ onUnmounted(() => {
 .search-item:hover .search-item-add { background: #e65c00; }
 .search-empty { text-align: center; padding: 2.5rem 1rem; color: #9ca3af; font-size: 0.875rem; }
 
+@media (max-width: 375px) {
+    .sets-header-strength { grid-template-columns: 1.5rem 3.25rem 3.25rem 3rem; }
+    .set-row-strength     { grid-template-columns: 1.5rem 3.25rem 3.25rem 3rem; }
+    .sets-header-cardio   { grid-template-columns: 1.5rem 1fr 5rem; }
+    .set-row-cardio       { grid-template-columns: 1.5rem 1fr 5rem; }
+    .set-input { font-size: 0.8rem; }
+    .exercise-name { font-size: 0.8rem; }
+    .statusbar { padding: 0.4rem 0.5rem; }
+}
+
 @media (max-width: 480px) {
     .page { padding: 0 0.5rem 5rem; }
     .topbar { padding: 0.65rem 0.75rem; }

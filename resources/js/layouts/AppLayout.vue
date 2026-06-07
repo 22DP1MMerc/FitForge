@@ -165,6 +165,20 @@ defineProps<Props>();
         }
     }
 
+    @media (max-width: 480px) {
+        .app-main {
+            padding: 0.5rem;
+        }
+
+        .page-content {
+            padding: 0.625rem;
+        }
+
+        .page-title {
+            font-size: 1.15rem;
+        }
+    }
+
     /* Optional: Smooth transitions */
     .page-content,
     .page-title,

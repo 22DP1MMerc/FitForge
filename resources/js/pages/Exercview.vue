@@ -366,7 +366,7 @@ const deleteExercise = async (exercise: any) => {
     /* Režģis */
     .grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr));
         gap: 1.25rem;
     }
 
@@ -606,6 +606,21 @@ const deleteExercise = async (exercise: any) => {
         .admin-overlay {
             opacity: 1;
             background: rgba(0,0,0,0.45);
+        }
+    }
+
+    @media (max-width: 480px) {
+        .card {
+            padding: 1rem;
+        }
+
+        .ex-card {
+            border-radius: 0.75rem;
+        }
+
+        .admin-btn {
+            min-height: 2.5rem;
+            font-size: 0.75rem;
         }
     }
 </style>

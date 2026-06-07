@@ -498,7 +498,7 @@ const startRoutineWorkout = async (routine: any) => {
     /* Režģis — šķirtājs aizņem visu platumu */
     .grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
         gap: 1.25rem;
     }
 
@@ -1097,6 +1097,20 @@ const startRoutineWorkout = async (routine: any) => {
             flex-direction: column;
             align-items: flex-start;
             gap: 0.4rem;
+        }
+    }
+
+    @media (max-width: 375px) {
+        .page {
+            padding: 0.75rem 0.375rem;
+        }
+
+        .page-title {
+            font-size: 1.4rem;
+        }
+
+        .modal__head, .modal__body, .modal__foot {
+            padding: 0.75rem;
         }
     }
 </style>

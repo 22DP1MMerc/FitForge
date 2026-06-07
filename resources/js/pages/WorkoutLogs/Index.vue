@@ -795,4 +795,19 @@ const deleteWorkout = () => {
             align-items: flex-start;
         }
     }
+
+    @media (max-width: 375px) {
+        .topbar {
+            padding: 0.75rem;
+        }
+
+        .stats-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .table th:nth-child(3),
+        .table td:nth-child(3) {
+            display: none;
+        }
+    }
 </style>

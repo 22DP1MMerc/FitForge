@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, usePage, router } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
+import { CheckCircle, Target, Plus, Trash2, Edit, ShieldAlert, Dumbbell, Zap, Medal, Calendar, Loader2 } from 'lucide-vue-next';
 import axios from 'axios';
 import type { SharedData } from '@/types';
 
@@ -221,6 +222,187 @@ const clearActiveRoutine = async () => {
 const browseRoutines = () => router.visit('/routines');
 const navigateTo    = (path: string) => router.visit(path);
 const editSchedule  = () => router.visit(activeRoutine.value ? '/routines' : '/routines/create');
+
+// ── Goals ────────────────────────────────────────────────
+
+interface GoalExercise { id: number; name: string; muscle_group: string; }
+
+interface Goal {
+    id: number; user_id: number; title: string; description: string | null;
+    type: 'workout' | 'strength' | 'endurance';
+    exercise_id: number | null; exercise: GoalExercise | null;
+    target_value: number; current_value: number; unit: string | null;
+    deadline: string | null; completed: boolean;
+    created_at: string; updated_at: string;
+}
+
+interface GoalFormData {
+    title: string; description: string;
+    type: 'workout' | 'strength' | 'endurance';
+    exercise_id: string; target_value: string; unit: string; deadline: string;
+}
+
+const goals = ref<Goal[]>([]);
+const goalsLoading = ref(false);
+const showGoalForm = ref(false);
+const processingGoalId = ref<number | null>(null);
+const goalsError = ref<string | null>(null);
+const editingGoal = ref<Goal | null>(null);
+const goalFormError = ref('');
+const savingGoal = ref(false);
+const deleteConfirmId = ref<number | null>(null);
+const goalNotification = ref<{ message: string; type: 'success' | 'error' } | null>(null);
+
+const showGoalNotification = (message: string, type: 'success' | 'error' = 'success') => {
+    goalNotification.value = { message, type };
+    setTimeout(() => { goalNotification.value = null; }, 3500);
+};
+
+const goalForm = ref<GoalFormData>({
+    title: '', description: '', type: 'workout',
+    exercise_id: '', target_value: '', unit: 'treniņi', deadline: '',
+});
+
+const strengthExercises = ref<GoalExercise[]>([]);
+
+const loadStrengthExercises = async () => {
+    if (strengthExercises.value.length) return;
+    try {
+        const res = await axios.get('/api/exercises/strength');
+        strengthExercises.value = res.data;
+    } catch {}
+};
+
+const groupedStrengthExercises = computed(() => {
+    const map = new Map<string, GoalExercise[]>();
+    for (const ex of strengthExercises.value) {
+        const g = ex.muscle_group || 'Citi';
+        if (!map.has(g)) map.set(g, []);
+        map.get(g)!.push(ex);
+    }
+    return Array.from(map.entries()).map(([label, exercises]) => ({ label, exercises }));
+});
+
+watch(() => goalForm.value.type, (type) => {
+    const defaults: Record<string, string> = { workout: 'treniņi', strength: 'kg', endurance: 'min' };
+    goalForm.value.unit = defaults[type] ?? '';
+    if (type !== 'strength') goalForm.value.exercise_id = '';
+    if (type === 'strength') loadStrengthExercises();
+});
+
+const totalGoals     = computed(() => goals.value.length);
+const completedGoals = computed(() => goals.value.filter(g => g.completed).length);
+const completionRate = computed(() => totalGoals.value > 0 ? Math.round((completedGoals.value / totalGoals.value) * 100) : 0);
+const inProgressGoals = computed(() => goals.value.filter(g => !g.completed));
+
+const loadGoals = async () => {
+    try {
+        goalsLoading.value = true;
+        goalsError.value = null;
+        const res = await axios.get('/api/goals');
+        goals.value = res.data;
+    } catch {
+        goalsError.value = 'Neizdevās ielādēt mērķus.';
+    } finally {
+        goalsLoading.value = false;
+    }
+};
+
+const saveGoal = async () => {
+    goalFormError.value = '';
+    if (!goalForm.value.title.trim()) { goalFormError.value = 'Lūdzu, ievadiet mērķa nosaukumu'; return; }
+    if (goalForm.value.type === 'strength' && !goalForm.value.exercise_id) { goalFormError.value = 'Spēka mērķim jāizvēlas vingrinājums'; return; }
+    if (!goalForm.value.target_value || parseFloat(goalForm.value.target_value) <= 0) { goalFormError.value = 'Lūdzu, ievadiet derīgu mērķa vērtību'; return; }
+    try {
+        savingGoal.value = true;
+        const isEditing = !!editingGoal.value;
+        const payload: Record<string, any> = {
+            title: goalForm.value.title.trim(),
+            description: goalForm.value.description.trim() || null,
+            type: goalForm.value.type,
+            exercise_id: goalForm.value.exercise_id ? parseInt(goalForm.value.exercise_id) : null,
+            target_value: parseFloat(goalForm.value.target_value),
+            unit: goalForm.value.unit.trim() || null,
+            deadline: goalForm.value.deadline || null,
+        };
+        if (editingGoal.value) {
+            await axios.put(`/api/goals/${editingGoal.value.id}`, payload);
+        } else {
+            await axios.post('/api/goals', payload);
+        }
+        await loadGoals();
+        showGoalForm.value = false;
+        resetGoalForm();
+        showGoalNotification(isEditing ? 'Mērķis veiksmīgi atjaunināts!' : 'Mērķis veiksmīgi izveidots!');
+    } catch (error: any) {
+        if (error.response?.data?.errors) {
+            goalFormError.value = (Object.values(error.response.data.errors) as string[][]).flat().join(', ');
+        } else {
+            goalFormError.value = 'Neizdevās saglabāt mērķi.';
+        }
+    } finally {
+        savingGoal.value = false;
+    }
+};
+
+const editGoal = (goal: Goal) => {
+    editingGoal.value = goal;
+    goalForm.value = {
+        title: goal.title, description: goal.description || '',
+        type: goal.type, exercise_id: goal.exercise_id?.toString() || '',
+        target_value: goal.target_value.toString(), unit: goal.unit || '', deadline: goal.deadline || '',
+    };
+    showGoalForm.value = true;
+};
+
+const deleteGoal = async (goalId: number) => {
+    try {
+        processingGoalId.value = goalId;
+        deleteConfirmId.value = null;
+        await axios.delete(`/api/goals/${goalId}`);
+        await loadGoals();
+        showGoalNotification('Mērķis veiksmīgi dzēsts!');
+    } catch {
+        showGoalNotification('Neizdevās dzēst mērķi', 'error');
+    } finally {
+        processingGoalId.value = null;
+    }
+};
+
+const resetGoalForm = () => {
+    editingGoal.value = null;
+    goalForm.value = { title: '', description: '', type: 'workout', exercise_id: '', target_value: '', unit: 'treniņi', deadline: '' };
+};
+
+const cancelGoalForm = () => {
+    showGoalForm.value = false;
+    goalFormError.value = '';
+    resetGoalForm();
+};
+
+const goalTypes = [
+    { value: 'workout',   label: 'Treniņš',  emoji: '💪' },
+    { value: 'strength',  label: 'Spēks',    emoji: '🏋️' },
+    { value: 'endurance', label: 'Izturība', emoji: '🏃' },
+] as const;
+
+const getGoalTypeConfig = (type: string) => {
+    const configs = {
+        workout:   { name: 'Treniņš',  color: '#3b82f6', bg: '#eff6ff' },
+        strength:  { name: 'Spēks',    color: '#f97316', bg: '#fff7ed' },
+        endurance: { name: 'Izturība', color: '#8b5cf6', bg: '#f5f3ff' },
+    };
+    return configs[type as keyof typeof configs] || configs.workout;
+};
+
+const getProgressPct = (goal: Goal) => {
+    if (goal.completed) return 100;
+    return Math.min(Math.round((goal.current_value / goal.target_value) * 100), 100);
+};
+
+onMounted(() => {
+    loadGoals();
+});
 </script>
 
 <template>
@@ -500,8 +682,194 @@ const editSchedule  = () => router.visit(activeRoutine.value ? '/routines' : '/r
                         </div>
                     </div>
                 </div>
+
+                <!-- Mērķi -->
+                <div class="goals-section">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="goals-header-left">
+                                <h2>🎯 Mani mērķi</h2>
+                                <div v-if="totalGoals > 0" class="goals-meta">
+                                    <span class="goals-stat">{{ completedGoals }}/{{ totalGoals }} pabeigti</span>
+                                    <div class="goals-progress-bar">
+                                        <div class="goals-progress-fill" :style="{ width: completionRate + '%' }"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <button @click="showGoalForm = true; resetGoalForm()" class="btn-new-goal">
+                                <Plus :size="15" />
+                                Jauns mērķis
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div v-if="goalsLoading" class="goals-loading">
+                                <Loader2 :size="22" class="spin" />
+                                <span>Ielādē...</span>
+                            </div>
+                            <div v-else-if="goalsError" class="goals-error">
+                                <ShieldAlert :size="16" />
+                                {{ goalsError }}
+                            </div>
+                            <div v-else-if="goals.length === 0" class="goals-empty">
+                                <Target :size="36" />
+                                <p>Nav izveidots neviens mērķis</p>
+                                <button @click="showGoalForm = true; resetGoalForm()" class="btn-new-goal-empty">
+                                    Izveidot pirmo mērķi
+                                </button>
+                            </div>
+                            <div v-else class="goals-grid">
+                                <div v-for="goal in goals" :key="goal.id" class="goal-card" :class="{ 'goal-done': goal.completed }">
+                                    <div class="goal-card-top">
+                                        <span class="goal-type-chip" :style="{ background: getGoalTypeConfig(goal.type).bg, color: getGoalTypeConfig(goal.type).color }">
+                                            {{ getGoalTypeConfig(goal.type).name }}
+                                        </span>
+                                        <div class="goal-card-actions">
+                                            <button @click="editGoal(goal)" class="goal-act-btn goal-act-edit"><Edit :size="14" /></button>
+                                            <div v-if="deleteConfirmId === goal.id" class="del-confirm">
+                                                <span>Dzēst?</span>
+                                                <button @click="deleteGoal(goal.id)" class="del-yes">Jā</button>
+                                                <button @click="deleteConfirmId = null" class="del-no">Nē</button>
+                                            </div>
+                                            <button v-else @click="deleteConfirmId = goal.id" class="goal-act-btn goal-act-del"><Trash2 :size="14" /></button>
+                                        </div>
+                                    </div>
+                                    <div class="goal-card-title">{{ goal.title }}</div>
+                                    <div v-if="goal.exercise" class="goal-exercise">
+                                        <Dumbbell :size="11" />
+                                        {{ goal.exercise.name }}
+                                    </div>
+                                    <div class="goal-progress-wrap">
+                                        <div class="goal-progress-row">
+                                            <span>{{ goal.current_value }} / {{ goal.target_value }} {{ goal.unit }}</span>
+                                            <span class="goal-pct">{{ getProgressPct(goal) }}%</span>
+                                        </div>
+                                        <div class="goal-bar">
+                                            <div class="goal-bar-fill" :style="{ width: getProgressPct(goal) + '%', background: getGoalTypeConfig(goal.type).color }"></div>
+                                        </div>
+                                    </div>
+                                    <div class="goal-card-footer">
+                                        <span v-if="goal.completed" class="badge-done"><CheckCircle :size="12" /> Sasniegts!</span>
+                                        <span v-else class="badge-auto"><Zap :size="11" /> Auto-izsekots</span>
+                                        <span v-if="goal.deadline" class="goal-deadline">
+                                            <Calendar :size="11" />
+                                            {{ new Date(goal.deadline).toLocaleDateString('lv-LV') }}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </div>
+
+        <!-- Goal notification toast -->
+        <Transition name="goal-toast">
+            <div v-if="goalNotification" class="goal-toast" :class="goalNotification.type">
+                <CheckCircle v-if="goalNotification.type === 'success'" :size="16" />
+                <ShieldAlert v-else :size="16" />
+                {{ goalNotification.message }}
+            </div>
+        </Transition>
+
+        <!-- Goal form modal — teleported to body -->
+        <Teleport to="body">
+            <Transition name="modal-anim">
+                <div v-if="showGoalForm" class="gm-overlay" @click.self="cancelGoalForm">
+                    <div class="gm-panel">
+                        <div class="gm-header">
+                            <div class="gm-header-icon" :class="`gm-type-${goalForm.type}`">
+                                <Target :size="20" />
+                            </div>
+                            <div class="gm-header-text">
+                                <h3 class="gm-title">{{ editingGoal ? 'Rediģēt mērķi' : 'Jauns mērķis' }}</h3>
+                                <p class="gm-subtitle">{{ editingGoal ? 'Atjaunini mērķa informāciju' : 'Izvirzi jaunu fitnesa mērķi' }}</p>
+                            </div>
+                            <button @click="cancelGoalForm" class="gm-close">
+                                <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M13.5 4.5L4.5 13.5M4.5 4.5L13.5 13.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                            </button>
+                        </div>
+                        <div v-if="goalFormError" class="gm-error">
+                            <ShieldAlert :size="15" />
+                            <span>{{ goalFormError }}</span>
+                        </div>
+                        <div class="gm-body">
+                            <div class="gm-field">
+                                <label class="gm-label">Tips</label>
+                                <div class="gm-type-pills">
+                                    <button type="button" v-for="t in goalTypes" :key="t.value"
+                                        @click="goalForm.type = t.value"
+                                        class="gm-pill" :class="{ active: goalForm.type === t.value, [`pill-${t.value}`]: true }">
+                                        <span>{{ t.emoji }}</span>
+                                        <span>{{ t.label }}</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="gm-field">
+                                <label class="gm-label">Nosaukums <span class="gm-required">*</span></label>
+                                <input v-model="goalForm.title" class="gm-input" placeholder="Piemēram: Noskriet 5 km" @input="goalFormError = ''" />
+                            </div>
+                            <div v-if="goalForm.type === 'strength'" class="gm-field">
+                                <label class="gm-label">Vingrinājums <span class="gm-required">*</span></label>
+                                <select v-model="goalForm.exercise_id" class="gm-input gm-select" @change="goalFormError = ''">
+                                    <option value="">— izvēlies vingrinājumu —</option>
+                                    <optgroup v-for="group in groupedStrengthExercises" :key="group.label" :label="group.label">
+                                        <option v-for="ex in group.exercises" :key="ex.id" :value="ex.id.toString()">{{ ex.name }}</option>
+                                    </optgroup>
+                                </select>
+                            </div>
+                            <div class="gm-auto-info">
+                                <Zap :size="14" />
+                                <span v-if="goalForm.type === 'workout'">Automātiski atjaunojas pēc katra pabeigta treniņa</span>
+                                <span v-else-if="goalForm.type === 'strength'">Atjaunojas kad uzstādīts jauns personīgais rekords</span>
+                                <span v-else-if="goalForm.type === 'endurance'">Uzkrājas kopējais kardio laiks no visiem treniņiem</span>
+                            </div>
+                            <div class="gm-field">
+                                <label class="gm-label">Apraksts <span class="gm-optional">— pēc izvēles</span></label>
+                                <textarea v-model="goalForm.description" class="gm-textarea" rows="2" placeholder="Īss apraksts par mērķi..."></textarea>
+                            </div>
+                            <div class="gm-row">
+                                <div class="gm-field">
+                                    <label class="gm-label">Mērķa vērtība <span class="gm-required">*</span></label>
+                                    <input v-model="goalForm.target_value" type="number" min="0.01" step="any" class="gm-input"
+                                        :placeholder="goalForm.type === 'workout' ? '50' : goalForm.type === 'endurance' ? '120' : '100'"
+                                        @input="goalFormError = ''" />
+                                </div>
+                                <div class="gm-field">
+                                    <label class="gm-label">Mērvienība</label>
+                                    <select v-model="goalForm.unit" class="gm-input gm-select">
+                                        <template v-if="goalForm.type === 'workout'">
+                                            <option value="treniņi">treniņi</option>
+                                        </template>
+                                        <template v-else-if="goalForm.type === 'strength'">
+                                            <option value="kg">kg</option>
+                                            <option value="lbs">lbs</option>
+                                        </template>
+                                        <template v-else-if="goalForm.type === 'endurance'">
+                                            <option value="min">min</option>
+                                            <option value="km">km</option>
+                                            <option value="soļi">soļi</option>
+                                        </template>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="gm-field">
+                                <label class="gm-label">Termiņš <span class="gm-optional">— pēc izvēles</span></label>
+                                <input v-model="goalForm.deadline" type="date" class="gm-input" />
+                            </div>
+                        </div>
+                        <div class="gm-footer">
+                            <button @click="cancelGoalForm" class="gm-btn-cancel">Atcelt</button>
+                            <button @click="saveGoal" :disabled="savingGoal" class="gm-btn-save">
+                                <Loader2 v-if="savingGoal" :size="16" class="spin" />
+                                {{ savingGoal ? 'Saglabā...' : (editingGoal ? 'Saglabāt izmaiņas' : 'Izveidot mērķi') }}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </Transition>
+        </Teleport>
     </AppLayout>
 </template>
 
@@ -1231,7 +1599,504 @@ const editSchedule  = () => router.visit(activeRoutine.value ? '/routines' : '/r
         }
     }
 
+    /* ── MĒRĶI ─────────────────────────────────────────────── */
+    .goals-section { margin-top: 1.25rem; }
+
+    .goals-header-left {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .goals-meta {
+        display: flex;
+        align-items: center;
+        gap: 0.625rem;
+        min-width: 0;
+    }
+
+    .goals-stat {
+        font-size: 0.75rem;
+        color: #6b7280;
+        white-space: nowrap;
+    }
+
+    .goals-progress-bar {
+        width: 80px;
+        height: 5px;
+        background: #e5e7eb;
+        border-radius: 9999px;
+        overflow: hidden;
+        flex-shrink: 0;
+    }
+
+    .goals-progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #ff8c42, #e65c00);
+        border-radius: 9999px;
+        transition: width 0.4s ease;
+    }
+
+    .btn-new-goal {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        padding: 0.5rem 1rem;
+        background: linear-gradient(135deg, #ff8c42, #e65c00);
+        color: white;
+        border: none;
+        border-radius: 0.5rem;
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+        flex-shrink: 0;
+        transition: opacity 0.15s;
+    }
+
+    .btn-new-goal:hover { opacity: 0.9; }
+
+    .goals-loading, .goals-error {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        justify-content: center;
+        padding: 1.5rem;
+        font-size: 0.875rem;
+        color: #6b7280;
+    }
+
+    .goals-error { color: #dc2626; }
+
+    .goals-empty {
+        text-align: center;
+        padding: 2rem 1rem;
+        color: #9ca3af;
+    }
+
+    .goals-empty p { font-size: 0.875rem; margin: 0.5rem 0 1rem; }
+
+    .btn-new-goal-empty {
+        padding: 0.5rem 1.25rem;
+        background: #f3f4f6;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.5rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: #374151;
+        cursor: pointer;
+        transition: background 0.15s;
+    }
+
+    .btn-new-goal-empty:hover { background: #e5e7eb; }
+
+    .goals-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
+        gap: 1rem;
+    }
+
+    .goal-card {
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 0.875rem;
+        padding: 1rem;
+        transition: box-shadow 0.15s;
+    }
+
+    .goal-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+
+    .goal-done { border-color: #bbf7d0; background: #f0fdf4; }
+
+    .goal-card-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.625rem;
+    }
+
+    .goal-type-chip {
+        font-size: 0.7rem;
+        font-weight: 600;
+        padding: 0.2rem 0.6rem;
+        border-radius: 9999px;
+    }
+
+    .goal-card-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.375rem;
+    }
+
+    .goal-act-btn {
+        width: 26px;
+        height: 26px;
+        border: 1px solid #e5e7eb;
+        background: white;
+        border-radius: 0.375rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+
+    .goal-act-edit { color: #3b82f6; }
+    .goal-act-edit:hover { background: #eff6ff; border-color: #3b82f6; }
+    .goal-act-del  { color: #ef4444; }
+    .goal-act-del:hover  { background: #fef2f2; border-color: #ef4444; }
+
+    .del-confirm {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        font-size: 0.72rem;
+        color: #6b7280;
+    }
+
+    .del-yes, .del-no {
+        padding: 0.15rem 0.4rem;
+        border: none;
+        border-radius: 0.25rem;
+        font-size: 0.72rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .del-yes { background: #fef2f2; color: #dc2626; }
+    .del-no  { background: #f3f4f6; color: #374151; }
+
+    .goal-card-title {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: #111827;
+        margin-bottom: 0.25rem;
+    }
+
+    .goal-exercise {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        font-size: 0.72rem;
+        color: #6b7280;
+        margin-bottom: 0.5rem;
+    }
+
+    .goal-progress-wrap { margin: 0.625rem 0; }
+
+    .goal-progress-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.72rem;
+        color: #6b7280;
+        margin-bottom: 0.3rem;
+    }
+
+    .goal-pct { font-weight: 600; color: #374151; }
+
+    .goal-bar {
+        height: 5px;
+        background: #e5e7eb;
+        border-radius: 9999px;
+        overflow: hidden;
+    }
+
+    .goal-bar-fill {
+        height: 100%;
+        border-radius: 9999px;
+        transition: width 0.3s ease;
+    }
+
+    .goal-card-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 0.5rem;
+    }
+
+    .badge-done {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        font-size: 0.7rem;
+        font-weight: 600;
+        color: #059669;
+        background: #ecfdf5;
+        padding: 0.15rem 0.5rem;
+        border-radius: 9999px;
+    }
+
+    .badge-auto {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        font-size: 0.7rem;
+        font-weight: 500;
+        color: #6366f1;
+        background: #eef2ff;
+        padding: 0.15rem 0.5rem;
+        border-radius: 9999px;
+    }
+
+    .goal-deadline {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.2rem;
+        font-size: 0.7rem;
+        color: #9ca3af;
+    }
+
+    /* ── GOAL TOAST ──────────────────────────────────────── */
+    .goal-toast {
+        position: fixed;
+        bottom: 1.5rem;
+        right: 1.5rem;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.75rem 1.25rem;
+        border-radius: 0.75rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    }
+
+    .goal-toast.success { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+    .goal-toast.error   { background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; }
+
+    .goal-toast-enter-active { transition: all 0.3s ease; }
+    .goal-toast-leave-active { transition: all 0.25s ease; }
+    .goal-toast-enter-from, .goal-toast-leave-to { opacity: 0; transform: translateY(8px); }
+
+    /* ── GOAL MODAL (gm-*) ───────────────────────────────── */
+    .gm-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.55);
+        backdrop-filter: blur(6px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9000;
+        padding: 1rem;
+    }
+
+    .gm-panel {
+        background: #fff;
+        border-radius: 1.5rem;
+        width: 100%;
+        max-width: 560px;
+        max-height: 90vh;
+        overflow-y: auto;
+        box-shadow: 0 24px 64px rgba(0,0,0,0.18), 0 8px 24px rgba(0,0,0,0.1);
+        display: flex;
+        flex-direction: column;
+    }
+
+    .gm-header {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 1.5rem 1.5rem 1.25rem;
+        border-bottom: 1px solid #f1f5f9;
+        flex-shrink: 0;
+    }
+
+    .gm-header-icon {
+        width: 46px;
+        height: 46px;
+        border-radius: 0.875rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .gm-type-workout   { background: #eff6ff; color: #3b82f6; }
+    .gm-type-strength  { background: #fff7ed; color: #f97316; }
+    .gm-type-endurance { background: #f5f3ff; color: #8b5cf6; }
+
+    .gm-header-text { flex: 1; }
+
+    .gm-title { font-size: 1.125rem; font-weight: 700; color: #0f172a; margin: 0 0 0.125rem; }
+    .gm-subtitle { font-size: 0.8125rem; color: #94a3b8; margin: 0; }
+
+    .gm-close {
+        width: 36px;
+        height: 36px;
+        border-radius: 0.625rem;
+        border: 1px solid #e2e8f0;
+        background: #f8fafc;
+        color: #64748b;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s;
+        flex-shrink: 0;
+    }
+
+    .gm-close:hover { background: #fee2e2; border-color: #fca5a5; color: #dc2626; }
+
+    .gm-error {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: #fef2f2;
+        color: #dc2626;
+        border: 1px solid #fecaca;
+        padding: 0.75rem 1.5rem;
+        font-size: 0.8125rem;
+        font-weight: 500;
+    }
+
+    .gm-body {
+        padding: 1.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1.125rem;
+        overflow-y: auto;
+    }
+
+    .gm-field { display: flex; flex-direction: column; gap: 0.375rem; }
+
+    .gm-label { font-size: 0.8rem; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; }
+    .gm-required { color: #ef4444; }
+    .gm-optional { color: #94a3b8; font-weight: 400; text-transform: none; letter-spacing: 0; }
+
+    .gm-input {
+        width: 100%;
+        padding: 0.7rem 0.875rem;
+        border: 1.5px solid #e2e8f0;
+        border-radius: 0.75rem;
+        font-size: 0.9375rem;
+        color: #0f172a;
+        background: #fafafa;
+        transition: border-color 0.2s, box-shadow 0.2s;
+        outline: none;
+        box-sizing: border-box;
+    }
+
+    .gm-input:focus { border-color: #ff8c42; box-shadow: 0 0 0 3px rgba(255,140,66,0.12); background: #fff; }
+    .gm-input::placeholder { color: #cbd5e1; }
+
+    .gm-textarea {
+        width: 100%;
+        padding: 0.7rem 0.875rem;
+        border: 1.5px solid #e2e8f0;
+        border-radius: 0.75rem;
+        font-size: 0.9375rem;
+        color: #0f172a;
+        background: #fafafa;
+        resize: vertical;
+        min-height: 64px;
+        font-family: inherit;
+        transition: border-color 0.2s, box-shadow 0.2s;
+        outline: none;
+        box-sizing: border-box;
+    }
+
+    .gm-textarea:focus { border-color: #ff8c42; box-shadow: 0 0 0 3px rgba(255,140,66,0.12); background: #fff; }
+    .gm-textarea::placeholder { color: #cbd5e1; }
+
+    .gm-type-pills { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+
+    .gm-pill {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.625rem 0.25rem;
+        border: 1.5px solid #e2e8f0;
+        border-radius: 0.875rem;
+        background: #fafafa;
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: #64748b;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+
+    .gm-pill:hover { background: #f1f5f9; }
+    .gm-pill.active.pill-workout   { border-color: #3b82f6; background: #eff6ff; color: #1d4ed8; }
+    .gm-pill.active.pill-strength  { border-color: #f97316; background: #fff7ed; color: #c2410c; }
+    .gm-pill.active.pill-endurance { border-color: #8b5cf6; background: #f5f3ff; color: #6d28d9; }
+
+    .gm-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+
+    .gm-auto-info {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: #eff6ff;
+        border: 1px solid #bfdbfe;
+        border-radius: 0.625rem;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.78rem;
+        color: #1d4ed8;
+    }
+
+    .gm-select { appearance: none; cursor: pointer; }
+
+    .gm-footer {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 1.125rem 1.5rem;
+        border-top: 1px solid #f1f5f9;
+        flex-shrink: 0;
+    }
+
+    .gm-btn-cancel {
+        padding: 0.625rem 1.25rem;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 0.75rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: #475569;
+        cursor: pointer;
+        transition: background 0.15s;
+    }
+
+    .gm-btn-cancel:hover { background: #f1f5f9; }
+
+    .gm-btn-save {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.625rem 1.5rem;
+        background: linear-gradient(135deg, #ff8c42, #e65c00);
+        border: none;
+        border-radius: 0.75rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: white;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .gm-btn-save:hover:not(:disabled) { box-shadow: 0 6px 16px rgba(255,140,66,0.35); transform: translateY(-1px); }
+    .gm-btn-save:disabled { opacity: 0.65; cursor: not-allowed; }
+
+    .modal-anim-enter-active { transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
+    .modal-anim-leave-active { transition: all 0.2s ease; }
+    .modal-anim-enter-from, .modal-anim-leave-to { opacity: 0; }
+    .modal-anim-enter-from .gm-panel { transform: scale(0.95) translateY(12px); }
+    .modal-anim-leave-to .gm-panel   { transform: scale(0.97) translateY(4px); }
+
+    .spin { animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
     @media (max-width: 480px) {
+        .gm-row { grid-template-columns: 1fr; }
+        .goals-grid { grid-template-columns: 1fr; }
+        .goals-meta { display: none; }
+
         .dashboard {
             padding: 0 0.75rem 2rem;
         }
@@ -1282,6 +2147,42 @@ const editSchedule  = () => router.visit(activeRoutine.value ? '/routines' : '/r
 
         .streak-badge {
             display: none;
+        }
+    }
+
+    @media (max-width: 375px) {
+        .dashboard {
+            padding: 0 0.5rem 2rem;
+        }
+
+        .topbar {
+            padding: 0.75rem;
+        }
+
+        .topbar-title {
+            font-size: 1.05rem;
+        }
+
+        .stats-grid {
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+        }
+
+        .stat-num {
+            font-size: 1.1rem;
+        }
+
+        .goals-grid {
+            gap: 0.625rem;
+        }
+
+        .goal-card {
+            padding: 0.75rem;
+        }
+
+        .btn-new-goal {
+            font-size: 0.8rem;
+            padding: 0.45rem 0.875rem;
         }
     }
 </style>

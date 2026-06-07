@@ -887,4 +887,27 @@ const deleteWorkout = () => {
             font-size: 0.72rem;
         }
     }
+
+    @media (max-width: 375px) {
+        .qstat-val, .cardio-val {
+            font-size: 1.1rem;
+        }
+
+        .quick-stats {
+            grid-template-columns: repeat(2, 1fr);
+        }
+
+        .sets-grid, .sets-grid-cardio {
+            grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+        }
+
+        .muscle-name {
+            width: 60px;
+            font-size: 0.65rem;
+        }
+
+        .topbar-title {
+            font-size: 1rem;
+        }
+    }
 </style>
