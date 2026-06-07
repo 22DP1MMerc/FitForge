@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\WorkoutSession;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -34,6 +35,12 @@ class HandleInertiaRequests extends Middleware
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             // CSRF tokens visām Inertia lapām
             'csrf_token' => csrf_token(),
+            'activeWorkoutSession' => $request->user()
+                ? WorkoutSession::where('user_id', $request->user()->id)
+                    ->where('status', 'active')
+                    ->select('id', 'name', 'started_at')
+                    ->first()
+                : null,
         ];
     }
 }
