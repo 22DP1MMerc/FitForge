@@ -17,6 +17,7 @@ const props = defineProps<{
 }>();
 
 const form = useForm({
+    _method:      'PUT',
     name:         props.exercise.name,
     description:  props.exercise.description  || '',
     muscle_group: props.exercise.muscle_group || '',
@@ -48,7 +49,7 @@ const clearImage = () => {
 };
 
 const submitForm = () => {
-    form.put(route('exercises.update', { exercise: props.exercise.id }), {
+    form.post(route('exercises.update', { exercise: props.exercise.id }), {
         preserveScroll: true,
     });
 };
