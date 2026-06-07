@@ -732,13 +732,13 @@ onMounted(() => {
                                             {{ getGoalTypeConfig(goal.type).name }}
                                         </span>
                                         <div class="goal-card-actions">
-                                            <button @click="editGoal(goal)" class="goal-act-btn goal-act-edit"><Edit :size="14" color="#3b82f6" /></button>
+                                            <button @click="editGoal(goal)" class="goal-act-btn goal-act-edit"><Edit :size="14" /></button>
                                             <div v-if="deleteConfirmId === goal.id" class="del-confirm">
                                                 <span>Dzēst?</span>
                                                 <button @click="deleteGoal(goal.id)" class="del-yes">Jā</button>
                                                 <button @click="deleteConfirmId = null" class="del-no">Nē</button>
                                             </div>
-                                            <button v-else @click="deleteConfirmId = goal.id" class="goal-act-btn goal-act-del"><Trash2 :size="14" color="#ef4444" /></button>
+                                            <button v-else @click="deleteConfirmId = goal.id" class="goal-act-btn goal-act-del"><Trash2 :size="14" /></button>
                                         </div>
                                     </div>
                                     <div class="goal-card-title">{{ goal.title }}</div>
@@ -1468,8 +1468,8 @@ onMounted(() => {
         background: #fff7ed;
         border: 1px solid #fed7aa;
         border-radius: 0.625rem;
-        padding: 0.75rem 1rem;
-        margin-bottom: 0.875rem;
+        padding: 0.5rem 0.875rem;
+        margin-bottom: 0.625rem;
     }
 
     .routine-week-row {
@@ -1495,14 +1495,14 @@ onMounted(() => {
     .schedule-list {
         display: flex;
         flex-direction: column;
-        gap: 0.4rem;
+        gap: 0.25rem;
     }
 
     .schedule-day {
         display: flex;
         align-items: center;
         gap: 0.625rem;
-        padding: 0.6rem 0.75rem;
+        padding: 0.35rem 0.75rem;
         background: #f9fafb;
         border: 1px solid #f3f4f6;
         border-radius: 0.5rem;
@@ -1557,8 +1557,8 @@ onMounted(() => {
     }
 
     .motivation-box {
-        margin-top: 0.875rem;
-        padding: 0.875rem;
+        margin-top: 0.625rem;
+        padding: 0.625rem 0.875rem;
         background: linear-gradient(135deg, #fff7ed, #ffedd5);
         border: 1px solid #fed7aa;
         border-radius: 0.625rem;
@@ -1568,7 +1568,7 @@ onMounted(() => {
         display: flex;
         align-items: flex-start;
         gap: 0.5rem;
-        margin-bottom: 0.75rem;
+        margin-bottom: 0.5rem;
     }
 
     .motivation-icon {
@@ -1765,8 +1765,10 @@ onMounted(() => {
 
     .goal-act-edit { color: #3b82f6; background: #eff6ff; border: 1px solid #bfdbfe; }
     .goal-act-edit:hover { background: #dbeafe; border-color: #3b82f6; }
+    .goal-act-edit :deep(svg) { stroke: #3b82f6; }
     .goal-act-del  { color: #ef4444; background: #fef2f2; border: 1px solid #fecaca; }
     .goal-act-del:hover  { background: #fee2e2; border-color: #ef4444; }
+    .goal-act-del :deep(svg) { stroke: #ef4444; }
 
     .del-confirm {
         display: flex;
