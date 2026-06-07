@@ -2,7 +2,7 @@
 
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import { Head, Link, useForm, router } from '@inertiajs/vue3';
 import { ref } from 'vue';
 
 const props = defineProps<{
@@ -40,20 +40,24 @@ const clearImage = () => {
 };
 
 const submitForm = () => {
-    form
-        .transform((data) => {
-            const fd = new FormData();
-            fd.append('name', data.name);
-            fd.append('description', data.description || '');
-            fd.append('muscle_group', data.muscle_group);
-            fd.append('equipment', data.equipment);
-            fd.append('type', data.type);
-            if (rawFile) fd.append('image', rawFile);
-            return fd;
-        })
-        .post(route('exercises.store'), {
-            onSuccess: () => { form.reset(); rawFile = null; imagePreview.value = null; },
-        });
+    const fd = new FormData();
+    fd.append('name', form.name);
+    fd.append('description', form.description || '');
+    fd.append('muscle_group', form.muscle_group);
+    fd.append('equipment', form.equipment);
+    fd.append('type', form.type);
+    if (rawFile) {
+        fd.append('image', rawFile, rawFile.name);
+        console.log('[submit] appended image:', rawFile.name, rawFile.size, rawFile.type);
+    } else {
+        console.log('[submit] no rawFile');
+    }
+    console.log('[submit] FormData entries:', [...fd.keys()]);
+
+    router.post(route('exercises.store'), fd, {
+        onSuccess: () => { form.reset(); rawFile = null; imagePreview.value = null; },
+        onError: (errors) => { Object.assign(form.errors, errors); },
+    });
 };
 </script>
 

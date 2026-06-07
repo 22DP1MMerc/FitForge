@@ -48,22 +48,24 @@ const clearImage = () => {
 };
 
 const submitForm = () => {
-    form
-        .transform((data) => {
-            const fd = new FormData();
-            fd.append('_method', 'PUT');
-            fd.append('name', data.name);
-            fd.append('description', data.description || '');
-            fd.append('muscle_group', data.muscle_group);
-            fd.append('equipment', data.equipment);
-            fd.append('type', data.type);
-            if (rawFile) fd.append('image', rawFile);
-            if (removeImage) fd.append('remove_image', '1');
-            return fd;
-        })
-        .post(route('exercises.update', { exercise: props.exercise.id }), {
-            preserveScroll: true,
-        });
+    const fd = new FormData();
+    fd.append('_method', 'PUT');
+    fd.append('name', form.name);
+    fd.append('description', form.description || '');
+    fd.append('muscle_group', form.muscle_group);
+    fd.append('equipment', form.equipment);
+    fd.append('type', form.type);
+    if (rawFile) {
+        fd.append('image', rawFile, rawFile.name);
+        console.log('[submit] appended image:', rawFile.name, rawFile.size, rawFile.type);
+    }
+    if (removeImage) fd.append('remove_image', '1');
+    console.log('[submit] FormData entries:', [...fd.keys()]);
+
+    router.post(route('exercises.update', { exercise: props.exercise.id }), fd, {
+        preserveScroll: true,
+        onError: (errors) => { Object.assign(form.errors, errors); },
+    });
 };
 
 // Dzēš ar apstiprinājumu
