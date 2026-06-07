@@ -4,9 +4,8 @@ import { Link, router } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 
 const props = defineProps({
-    workoutLog:      Object,
-    stats:           Object,
-    similarWorkouts: Array
+    workoutLog: Object,
+    stats:      Object,
 });
 
 const showDeleteModal = ref(false);
@@ -229,18 +228,6 @@ const deleteWorkout = () => {
                         </div>
                     </div>
 
-                    <div v-if="similarWorkouts.length > 0" class="sidebar-card">
-                        <h3 class="sidebar-title">Līdzīgi treniņi</h3>
-                        <div class="similar-list">
-                            <div v-for="s in similarWorkouts" :key="s.id" class="similar-row">
-                                <div>
-                                    <div class="similar-name">{{ s.name }}</div>
-                                    <div class="similar-date">{{ formatDate(s.completed_at) }}</div>
-                                </div>
-                                <Link :href="route('workout-logs.show', s.id)" class="similar-link">Skatīt →</Link>
-                            </div>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
@@ -272,12 +259,17 @@ const deleteWorkout = () => {
 
 <style scoped>
     .page {
-        max-width: 1200px;
-        margin: 0 auto;
+        margin: -1.5rem;
         padding: 0 1rem 2rem;
         min-height: 100vh;
         background: #f3f4f6;
+        border-radius: 1rem;
+        overflow: hidden;
     }
+
+    @media (max-width: 768px) { .page { margin: -1rem; border-radius: 0.75rem; } }
+    @media (max-width: 640px) { .page { margin: -0.75rem; border-radius: 0.5rem; } }
+    @media (max-width: 480px) { .page { margin: -0.625rem; } }
 
     .topbar {
         display: flex;
@@ -417,7 +409,7 @@ const deleteWorkout = () => {
 
     .content {
         display: grid;
-        grid-template-columns: 2fr 1fr;
+        grid-template-columns: 3fr 1fr;
         gap: 1.25rem;
         align-items: start;
     }
@@ -713,51 +705,6 @@ const deleteWorkout = () => {
         font-weight: 600;
         color: #111827;
     }
-
-    .similar-list {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-    }
-
-    .similar-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0.6rem 0.75rem;
-        border: 1px solid #e5e7eb;
-        border-radius: 0.5rem;
-        transition: border-color 0.15s;
-    }
-
-        .similar-row:hover {
-            border-color: #ff8c42;
-        }
-
-    .similar-name {
-        font-size: 0.8rem;
-        font-weight: 500;
-        color: #111827;
-        margin-bottom: 0.15rem;
-    }
-
-    .similar-date {
-        font-size: 0.72rem;
-        color: #9ca3af;
-    }
-
-    .similar-link {
-        font-size: 0.775rem;
-        color: #ff8c42;
-        text-decoration: none;
-        font-weight: 600;
-        white-space: nowrap;
-        flex-shrink: 0;
-    }
-
-        .similar-link:hover {
-            color: #e65c00;
-        }
 
     .modal-overlay {
         position: fixed;

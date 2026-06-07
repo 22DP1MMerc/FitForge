@@ -245,12 +245,17 @@ const deleteWorkout = () => {
 
 <style scoped>
     .page {
-        max-width: 1200px;
-        margin: 0 auto;
+        margin: -1.5rem;
         padding: 0 1rem 2rem;
         background: #f3f4f6;
         min-height: 100vh;
+        border-radius: 1rem;
+        overflow: hidden;
     }
+
+    @media (max-width: 768px) { .page { margin: -1rem; border-radius: 0.75rem; } }
+    @media (max-width: 640px) { .page { margin: -0.75rem; border-radius: 0.5rem; } }
+    @media (max-width: 480px) { .page { margin: -0.625rem; } }
 
     /* Galvene */
     .topbar {

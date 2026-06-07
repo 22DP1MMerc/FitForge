@@ -128,20 +128,6 @@ class WorkoutLogController extends Controller
 
         $stats = $this->calculateWorkoutStats($workoutLog);
 
-        // pēdējā mēneša treniņi sānjoslai
-        $similarWorkouts = WorkoutLog::where('user_id', $user->id)
-            ->where('id', '!=', $id)
-            ->whereDate('completed_at', '>=', Carbon::now()->subMonth())
-            ->orderBy('completed_at', 'desc')
-            ->limit(5)
-            ->get()
-            ->map(fn($log) => [
-                'id'               => $log->id,
-                'name'             => $log->name,
-                'completed_at'     => $log->completed_at?->toISOString(),
-                'duration_minutes' => $log->duration_minutes,
-            ]);
-
         return Inertia::render('WorkoutLogs/Show', [
             'workoutLog' => [
                 'id'               => $workoutLog->id,
@@ -155,8 +141,7 @@ class WorkoutLogController extends Controller
                 ] : null,
                 'log_exercises' => $workoutLog->log_exercises,
             ],
-            'stats'           => $stats,
-            'similarWorkouts' => $similarWorkouts,
+            'stats' => $stats,
         ]);
     }
 
