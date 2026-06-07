@@ -115,6 +115,8 @@ const getWeekProgressData = () => {
     return values.map(v => Math.round(Math.min(Math.max((v / max) * 100, 5), 100)));
 };
 
+const hasWeeklyWeightData = () => getWeekWeightData().some(v => v > 0);
+
 const getDayWeight = (index: number) => {
     const val = getWeekWeightData()[index];
     if (!val) return '';
@@ -568,29 +570,35 @@ onMounted(() => {
                                 <span class="card-header-value">{{ getWeeklyTotal() }}</span>
                             </div>
                             <div class="card-body">
-                                <div class="week-chart">
-                                    <div v-for="(val, i) in getWeekProgressData()" :key="i"
-                                         class="chart-col" :class="{ 'chart-today': i === todayIndex }">
-                                        <div class="chart-bar-wrap">
-                                            <div class="chart-weight-label" v-if="val > 0">{{ getDayWeight(i) }}</div>
-                                            <div class="chart-bar" :style="{ height: val + '%' }"></div>
+                                <template v-if="hasWeeklyWeightData()">
+                                    <div class="week-chart">
+                                        <div v-for="(val, i) in getWeekProgressData()" :key="i"
+                                             class="chart-col" :class="{ 'chart-today': i === todayIndex }">
+                                            <div class="chart-bar-wrap">
+                                                <div class="chart-weight-label" v-if="val > 0">{{ getDayWeight(i) }}</div>
+                                                <div class="chart-bar" :style="{ height: val + '%' }"></div>
+                                            </div>
+                                            <span class="chart-day-label">{{ weekDaysShort[i] }}</span>
                                         </div>
-                                        <span class="chart-day-label">{{ weekDaysShort[i] }}</span>
                                     </div>
-                                </div>
-                                <div class="chart-stats">
-                                    <div class="chart-stat">
-                                        <div class="chart-stat-lbl">Vidējais svars</div>
-                                        <div class="chart-stat-val">{{ getWeeklyAverage() }}</div>
+                                    <div class="chart-stats">
+                                        <div class="chart-stat">
+                                            <div class="chart-stat-lbl">Vidējais svars</div>
+                                            <div class="chart-stat-val">{{ getWeeklyAverage() }}</div>
+                                        </div>
+                                        <div class="chart-stat">
+                                            <div class="chart-stat-lbl">Labākā diena</div>
+                                            <div class="chart-stat-val">{{ getBestDay() }}</div>
+                                        </div>
+                                        <div class="chart-stat">
+                                            <div class="chart-stat-lbl">Kopējais svars</div>
+                                            <div class="chart-stat-val">{{ getWeeklyTotal() }}</div>
+                                        </div>
                                     </div>
-                                    <div class="chart-stat">
-                                        <div class="chart-stat-lbl">Labākā diena</div>
-                                        <div class="chart-stat-val">{{ getBestDay() }}</div>
-                                    </div>
-                                    <div class="chart-stat">
-                                        <div class="chart-stat-lbl">Kopējais svars</div>
-                                        <div class="chart-stat-val">{{ getWeeklyTotal() }}</div>
-                                    </div>
+                                </template>
+                                <div v-else class="chart-empty">
+                                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="1.5"><path d="M3 3v18h18"/><path d="M7 16l4-4 4 4 4-6"/></svg>
+                                    <span>Nav svara datu šonedēļ</span>
                                 </div>
                             </div>
                         </div>
@@ -724,19 +732,21 @@ onMounted(() => {
                                             {{ getGoalTypeConfig(goal.type).name }}
                                         </span>
                                         <div class="goal-card-actions">
-                                            <button @click="editGoal(goal)" class="goal-act-btn goal-act-edit"><Edit :size="14" /></button>
+                                            <button @click="editGoal(goal)" class="goal-act-btn goal-act-edit"><Edit :size="14" color="#3b82f6" /></button>
                                             <div v-if="deleteConfirmId === goal.id" class="del-confirm">
                                                 <span>Dzēst?</span>
                                                 <button @click="deleteGoal(goal.id)" class="del-yes">Jā</button>
                                                 <button @click="deleteConfirmId = null" class="del-no">Nē</button>
                                             </div>
-                                            <button v-else @click="deleteConfirmId = goal.id" class="goal-act-btn goal-act-del"><Trash2 :size="14" /></button>
+                                            <button v-else @click="deleteConfirmId = goal.id" class="goal-act-btn goal-act-del"><Trash2 :size="14" color="#ef4444" /></button>
                                         </div>
                                     </div>
                                     <div class="goal-card-title">{{ goal.title }}</div>
-                                    <div v-if="goal.exercise" class="goal-exercise">
-                                        <Dumbbell :size="11" />
-                                        {{ goal.exercise.name }}
+                                    <div class="goal-exercise" :class="{ 'goal-exercise--empty': !goal.exercise }">
+                                        <template v-if="goal.exercise">
+                                            <Dumbbell :size="11" />
+                                            {{ goal.exercise.name }}
+                                        </template>
                                     </div>
                                     <div class="goal-progress-wrap">
                                         <div class="goal-progress-row">
@@ -1128,6 +1138,7 @@ onMounted(() => {
         display: grid;
         grid-template-columns: 2fr 1fr;
         gap: 1.25rem;
+        align-items: start;
     }
 
     .left-col, .right-col {
@@ -1291,6 +1302,17 @@ onMounted(() => {
     }
 
     /* GRAFIKS */
+    .chart-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.625rem;
+        padding: 2rem 1rem;
+        color: #9ca3af;
+        font-size: 0.8rem;
+    }
+
     .week-chart {
         display: flex;
         justify-content: space-between;
@@ -1733,8 +1755,6 @@ onMounted(() => {
     .goal-act-btn {
         width: 26px;
         height: 26px;
-        border: 1px solid #e5e7eb;
-        background: white;
         border-radius: 0.375rem;
         display: flex;
         align-items: center;
@@ -1743,10 +1763,10 @@ onMounted(() => {
         transition: all 0.15s;
     }
 
-    .goal-act-edit { color: #3b82f6; }
-    .goal-act-edit:hover { background: #eff6ff; border-color: #3b82f6; }
-    .goal-act-del  { color: #ef4444; }
-    .goal-act-del:hover  { background: #fef2f2; border-color: #ef4444; }
+    .goal-act-edit { color: #3b82f6; background: #eff6ff; border: 1px solid #bfdbfe; }
+    .goal-act-edit:hover { background: #dbeafe; border-color: #3b82f6; }
+    .goal-act-del  { color: #ef4444; background: #fef2f2; border: 1px solid #fecaca; }
+    .goal-act-del:hover  { background: #fee2e2; border-color: #ef4444; }
 
     .del-confirm {
         display: flex;
@@ -1776,12 +1796,17 @@ onMounted(() => {
     }
 
     .goal-exercise {
-        display: inline-flex;
+        display: flex;
         align-items: center;
         gap: 0.25rem;
         font-size: 0.72rem;
         color: #6b7280;
         margin-bottom: 0.5rem;
+        min-height: 1.1rem;
+    }
+
+    .goal-exercise--empty {
+        pointer-events: none;
     }
 
     .goal-progress-wrap { margin: 0.625rem 0; }

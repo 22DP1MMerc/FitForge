@@ -123,7 +123,7 @@ class DashboardController extends Controller
         if ($weeks->isEmpty()) return 0;
 
         $currentWeek = Carbon::parse($weeks[0]->week_start)->startOfWeek();
-        if (Carbon::now()->startOfWeek()->diffInWeeks($currentWeek) > 1) return 0;
+        if (Carbon::now()->startOfWeek()->diffInWeeks($currentWeek) > 0) return 0;
 
         $streak = 1;
         for ($i = 1; $i < $weeks->count(); $i++) {
