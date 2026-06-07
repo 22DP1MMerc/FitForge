@@ -3,6 +3,8 @@ import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import DeleteUser from '@/components/DeleteUser.vue';
 import InputError from '@/components/InputError.vue';
+import Modal from '@/components/Modal.vue';
+import { useModal } from '@/composables/useModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,13 +21,24 @@ defineProps<Props>();
 const page = usePage();
 const user = (page.props as any).auth.user;
 
+const { modalRef, confirm } = useModal();
+
 // Profile form
 const form = useForm({
     name: user.name,
     email: user.email,
 });
 
-const submit = () => {
+const submit = async () => {
+    if (form.email !== user.email) {
+        const ok = await confirm({
+            title: 'Mainīt e-pastu?',
+            message: `E-pasta adrese tiks mainīta uz "${form.email}".`,
+            confirmText: 'Jā, mainīt',
+            cancelText: 'Atcelt',
+        });
+        if (!ok) return;
+    }
     form.patch(route('profile.update'), {
         preserveScroll: true,
     });
@@ -280,6 +293,7 @@ const updatePassword = () => {
                 </div>
             </div>
         </div>
+        <Modal ref="modalRef" />
     </AppLayout>
 </template>
 
