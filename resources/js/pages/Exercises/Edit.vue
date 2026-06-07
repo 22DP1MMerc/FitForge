@@ -5,7 +5,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import Modal from '@/components/Modal.vue';
 import { useModal } from '@/composables/useModal';
 import { Head, Link, useForm, router } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { ref, markRaw } from 'vue';
 
 const { modalRef, confirm } = useModal();
 
@@ -36,7 +36,7 @@ const imagePreview = ref<string | null>(props.exercise.image_url || null);
 const handleFileSelect = (e: Event) => {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
-    form.image = file;
+    form.image = markRaw(file);
     form.remove_image = false;
     imagePreview.value = URL.createObjectURL(file);
 };

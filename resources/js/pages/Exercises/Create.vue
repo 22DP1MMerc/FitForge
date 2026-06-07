@@ -3,7 +3,7 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { ref, markRaw } from 'vue';
 
 const props = defineProps<{
     muscleGroups:     string[];
@@ -29,7 +29,7 @@ const imagePreview   = ref<string | null>(null);
 const handleFileSelect = (e: Event) => {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
-    form.image = file;
+    form.image = markRaw(file);
     imagePreview.value = URL.createObjectURL(file);
 };
 
