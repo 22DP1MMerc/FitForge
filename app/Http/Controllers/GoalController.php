@@ -30,7 +30,7 @@ class GoalController extends Controller
         $validated = $request->validate([
             'title'        => 'required|string|max:255',
             'description'  => 'nullable|string',
-            'type'         => ['required', Rule::in(['workout', 'weight', 'strength', 'endurance'])],
+            'type'         => ['required', Rule::in(['workout', 'strength', 'endurance'])],
             'exercise_id'  => [
                 Rule::requiredIf($request->type === 'strength'),
                 'nullable',
@@ -62,7 +62,7 @@ class GoalController extends Controller
         $validated = $request->validate([
             'title'        => 'sometimes|string|max:255',
             'description'  => 'nullable|string',
-            'type'         => ['sometimes', Rule::in(['workout', 'weight', 'strength', 'endurance'])],
+            'type'         => ['sometimes', Rule::in(['workout', 'strength', 'endurance'])],
             'exercise_id'  => 'nullable|exists:exercises,id',
             'target_value' => 'sometimes|numeric|min:0.01',
             'current_value'=> 'sometimes|numeric|min:0',

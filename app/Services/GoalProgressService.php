@@ -17,7 +17,7 @@ class GoalProgressService
     public function updateForUser(User $user): void
     {
         $goals = $user->goals()
-            ->whereIn('type', ['workout', 'strength', 'endurance'])
+            ->whereIn('type', ['workout', 'strength', 'endurance'])  // 'weight' removed — no data source
             ->where('completed', false)
             ->get();
 

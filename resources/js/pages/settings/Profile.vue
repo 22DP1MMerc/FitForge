@@ -27,7 +27,7 @@ interface Goal {
     user_id: number;
     title: string;
     description: string | null;
-    type: 'workout' | 'weight' | 'strength' | 'endurance';
+    type: 'workout' | 'strength' | 'endurance';
     exercise_id: number | null;
     exercise: Exercise | null;
     target_value: number;
@@ -42,7 +42,7 @@ interface Goal {
 interface GoalForm {
     title: string;
     description: string;
-    type: 'workout' | 'weight' | 'strength' | 'endurance';
+    type: 'workout' | 'strength' | 'endurance';
     exercise_id: string;
     target_value: string;
     unit: string;
@@ -179,7 +179,6 @@ watch(() => goalForm.value.type, (type) => {
         workout: 'treniņi',
         strength: 'kg',
         endurance: 'min',
-        weight: 'kg',
     };
     goalForm.value.unit = defaults[type] ?? '';
     if (type !== 'strength') goalForm.value.exercise_id = '';
@@ -328,7 +327,6 @@ const cancelGoalForm = () => {
 
 const goalTypes = [
     { value: 'workout',   label: 'Treniņš',  emoji: '💪' },
-    { value: 'weight',    label: 'Svars',    emoji: '⚖️' },
     { value: 'strength',  label: 'Spēks',    emoji: '🏋️' },
     { value: 'endurance', label: 'Izturība', emoji: '🏃' },
 ] as const;
@@ -337,7 +335,6 @@ const goalTypes = [
 const getGoalTypeConfig = (type: string) => {
     const configs = {
         workout: { icon: Dumbbell, name: 'Treniņš', color: '#3b82f6', bg: '#eff6ff', gradient: 'from-blue-500 to-blue-600' },
-        weight: { icon: Target, name: 'Svars', color: '#10b981', bg: '#ecfdf5', gradient: 'from-emerald-500 to-emerald-600' },
         strength: { icon: Zap, name: 'Spēks', color: '#f97316', bg: '#fff7ed', gradient: 'from-orange-500 to-orange-600' },
         endurance: { icon: Flame, name: 'Izturība', color: '#8b5cf6', bg: '#f5f3ff', gradient: 'from-violet-500 to-violet-600' }
     };
@@ -634,7 +631,7 @@ onMounted(() => {
                                                     </div>
 
                                                     <!-- Auto-track info banner -->
-                                                    <div v-if="goalForm.type !== 'weight'" class="gm-auto-info">
+                                                    <div class="gm-auto-info">
                                                         <Zap :size="14" />
                                                         <span v-if="goalForm.type === 'workout'">Automātiski atjaunojas pēc katra pabeigta treniņa</span>
                                                         <span v-else-if="goalForm.type === 'strength'">Atjaunojas kad uzstādīts jauns personīgais rekords izvēlētajā vingrinājumā</span>
@@ -671,10 +668,6 @@ onMounted(() => {
                                                                     <option value="min">min</option>
                                                                     <option value="km">km</option>
                                                                     <option value="soļi">soļi</option>
-                                                                </template>
-                                                                <template v-else-if="goalForm.type === 'weight'">
-                                                                    <option value="kg">kg</option>
-                                                                    <option value="lbs">lbs</option>
                                                                 </template>
                                                             </select>
                                                         </div>
@@ -773,25 +766,14 @@ onMounted(() => {
                                         </div>
 
                                         <div class="goal-footer">
-                                            <!-- Auto-tracked: show status badge only, no manual button -->
-                                            <template v-if="goal.type !== 'weight'">
-                                                <span v-if="goal.completed" class="auto-complete-badge">
-                                                    <CheckCircle :size="13" />
-                                                    Automātiski sasniegts!
-                                                </span>
-                                                <span v-else class="auto-track-badge">
-                                                    <Zap :size="12" />
-                                                    Auto-izsekots
-                                                </span>
-                                            </template>
-                                            <!-- Weight goals: manual toggle -->
-                                            <template v-else>
-                                                <button @click="toggleGoalCompletion(goal.id)" :disabled="processingGoalId === goal.id" class="complete-btn" :class="{ completed: goal.completed }">
-                                                    <CheckCircle v-if="goal.completed" :size="16" />
-                                                    <span v-else class="circle-outline"></span>
-                                                    {{ goal.completed ? 'Pabeigts' : 'Atzīmēt kā pabeigtu' }}
-                                                </button>
-                                            </template>
+                                            <span v-if="goal.completed" class="auto-complete-badge">
+                                                <CheckCircle :size="13" />
+                                                Automātiski sasniegts!
+                                            </span>
+                                            <span v-else class="auto-track-badge">
+                                                <Zap :size="12" />
+                                                Auto-izsekots
+                                            </span>
                                             <div v-if="goal.completed" class="achievement-badge">
                                                 <Medal :size="14" />
                                                 <span>Sasniegts!</span>
@@ -1500,7 +1482,6 @@ onMounted(() => {
     }
 
     .gm-type-workout   { background: #eff6ff; color: #3b82f6; }
-    .gm-type-weight    { background: #ecfdf5; color: #10b981; }
     .gm-type-strength  { background: #fff7ed; color: #f97316; }
     .gm-type-endurance { background: #f5f3ff; color: #8b5cf6; }
 
@@ -1651,7 +1632,6 @@ onMounted(() => {
     .gm-pill:hover { background: #f1f5f9; }
 
     .gm-pill.active.pill-workout   { border-color: #3b82f6; background: #eff6ff; color: #1d4ed8; }
-    .gm-pill.active.pill-weight    { border-color: #10b981; background: #ecfdf5; color: #065f46; }
     .gm-pill.active.pill-strength  { border-color: #f97316; background: #fff7ed; color: #c2410c; }
     .gm-pill.active.pill-endurance { border-color: #8b5cf6; background: #f5f3ff; color: #6d28d9; }
 
