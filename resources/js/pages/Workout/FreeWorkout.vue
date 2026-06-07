@@ -203,6 +203,9 @@ const loadSession = async () => {
                 name:                ex.name,
                 muscle_group:        ex.muscle_group,
                 type:                ex.type || 'strength',
+                prev_weights:        ex.prev_weights    ?? [],
+                prev_reps:           ex.prev_reps       ?? [],
+                prev_durations:      ex.prev_durations  ?? [],
                 sets:                [...doneSets, ...pending],
             };
         });
@@ -247,6 +250,9 @@ const addExercise = async (exercise: any) => {
             name:                exercise.name,
             muscle_group:        exercise.muscle_group,
             type:                exercise.type || 'strength',
+            prev_weights:        r.data.prev_weights    ?? [],
+            prev_reps:           r.data.prev_reps       ?? [],
+            prev_durations:      r.data.prev_durations  ?? [],
             sets: [
                 defaultSet(exercise.type),
                 ...(exercise.type === 'cardio' ? [] : [defaultSet(exercise.type), defaultSet(exercise.type)]),
@@ -311,14 +317,35 @@ const totalSets = computed(() => exercises.value.reduce((s: number, ex: any) => 
 const doneSets  = computed(() => exercises.value.reduce((s: number, ex: any) => s + ex.sets.filter((set: any) => set.done).length, 0));
 
 const prevSetText = (ex: any, setIndex: number) => {
-    if (setIndex === 0 || !ex.sets[setIndex - 1]?.done) return '—';
-    const prev = ex.sets[setIndex - 1];
     if (ex.type === 'cardio') {
-        const m = Math.floor(prev.duration_seconds / 60);
-        const s = prev.duration_seconds % 60;
+        const dur = ex.prev_durations?.[setIndex];
+        if (!dur) return '—';
+        const m = Math.floor(dur / 60);
+        const s = dur % 60;
         return m > 0 ? `${m}m ${s}s` : `${s}s`;
     }
-    return `${prev.weight}kg × ${prev.reps}`;
+    const w = ex.prev_weights?.[setIndex];
+    const r = ex.prev_reps?.[setIndex];
+    if (w === undefined || r === undefined || r === 0) return '—';
+    return `${w}kg × ${r}`;
+};
+
+const hasPrevWorkout = (ex: any) =>
+    ex.type === 'cardio'
+        ? (ex.prev_durations?.length > 0)
+        : (ex.prev_reps?.length > 0);
+
+const prevWorkoutLabel = (ex: any): string => {
+    if (ex.type === 'cardio') {
+        return (ex.prev_durations ?? []).map((dur: number) => {
+            const m = Math.floor(dur / 60);
+            const s = dur % 60;
+            return m > 0 ? `${m}m ${s}s` : `${s}s`;
+        }).join(' · ') || '—';
+    }
+    const weights: number[] = ex.prev_weights ?? [];
+    const reps: number[]    = ex.prev_reps    ?? [];
+    return weights.map((w: number, i: number) => `${w}×${reps[i] ?? 0}`).join(' · ') || '—';
 };
 
 // ========== PABEIGT / ATCELT ==========
@@ -459,6 +486,12 @@ onUnmounted(() => {
                             <span v-if="ex.type === 'cardio'" class="exercise-type-badge">Kardio</span>
                         </div>
                         <button @click="removeExercise(exIndex)" class="btn-remove-ex" title="Noņemt">✕</button>
+                    </div>
+
+                    <!-- Iepriekšējā treniņa kopsavilkums -->
+                    <div v-if="hasPrevWorkout(ex)" class="prev-workout-bar">
+                        <span class="prev-workout-label">Pēd. treniņš:</span>
+                        <span class="prev-workout-sets">{{ prevWorkoutLabel(ex) }}</span>
                     </div>
 
                     <!-- STRENGTH galvene -->
@@ -670,6 +703,10 @@ onUnmounted(() => {
 .exercise-type-badge { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: #059669; background: #d1fae5; padding: 0.15rem 0.55rem; border-radius: 9999px; border: 1px solid #a7f3d0; }
 .btn-remove-ex { background: none; border: none; color: #d1d5db; font-size: 0.875rem; cursor: pointer; padding: 0.25rem 0.5rem; border-radius: 0.375rem; transition: all 0.15s; flex-shrink: 0; }
 .btn-remove-ex:hover { color: #ef4444; background: #fef2f2; }
+
+.prev-workout-bar { display: flex; align-items: center; gap: 0.5rem; padding: 0.35rem 1.25rem; background: #f0f9ff; border-bottom: 1px solid #e0f2fe; flex-wrap: wrap; }
+.prev-workout-label { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #0284c7; flex-shrink: 0; }
+.prev-workout-sets { font-size: 0.75rem; font-weight: 600; color: #0369a1; font-variant-numeric: tabular-nums; }
 
 .sets-header { display: grid; gap: 0.25rem; padding: 0.4rem 1.25rem; background: #f9fafb; border-bottom: 1px solid #f3f4f6; }
 .sets-header-strength { grid-template-columns: 2rem 1fr 4.5rem 4.5rem 4rem; }

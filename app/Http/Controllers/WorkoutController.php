@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Exercise;
 use App\Models\Routine;
 use App\Models\WorkoutLog;
+use App\Models\WorkoutLogExercise;
 use App\Models\WorkoutSession;
 use App\Models\WorkoutSessionExercise;
 use App\Services\GoalProgressService;
@@ -221,7 +222,20 @@ class WorkoutController extends Controller
             'sets_completed' => 0,
         ]);
 
-        return response()->json(['success' => true, 'session_exercise_id' => $ex->id]);
+        $prev = WorkoutLogExercise::where('exercise_id', $request->exercise_id)
+            ->whereHas('workoutLog', fn($q) => $q->where('user_id', Auth::id()))
+            ->with(['workoutLog' => fn($q) => $q->select('id', 'completed_at')])
+            ->get()
+            ->sortByDesc(fn($item) => $item->workoutLog->completed_at ?? '')
+            ->first();
+
+        return response()->json([
+            'success'             => true,
+            'session_exercise_id' => $ex->id,
+            'prev_weights'        => $prev?->weights_used         ?? [],
+            'prev_reps'           => $prev?->reps_completed       ?? [],
+            'prev_durations'      => $prev?->durations_completed  ?? [],
+        ]);
     }
 
     // Saglabāt setu — kardio saņem duration_seconds, strength reps+weight
