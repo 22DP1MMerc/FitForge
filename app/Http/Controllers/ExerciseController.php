@@ -56,13 +56,6 @@ class ExerciseController extends Controller
     {
         $this->authorizeAdmin();
 
-        \Log::info('Exercise store', [
-            'content_type' => $request->header('Content-Type'),
-            'has_file'     => $request->hasFile('image'),
-            'files'        => array_keys($request->files->all()),
-            'post_keys'    => array_keys($request->post()),
-        ]);
-
         $rules = [
             'name'         => 'required|string|max:255|unique:exercises,name',
             'description'  => 'nullable|string|max:1000',
@@ -100,8 +93,6 @@ class ExerciseController extends Controller
     public function update(Request $request, Exercise $exercise)
     {
         $this->authorizeAdmin();
-
-        error_log('Exercise update: content_type=' . $request->header('Content-Type') . ' has_file=' . ($request->hasFile('image') ? 'true' : 'false') . ' files=' . implode(',', array_keys($request->files->all())));
 
         $rules = [
             'name'         => 'required|string|max:255|unique:exercises,name,' . $exercise->id,

@@ -22,19 +22,31 @@ const form = useForm({
 const customMuscleGroup = ref(false);
 const customEquipment   = ref(false);
 
-const fileInputRef = ref<HTMLInputElement | null>(null);
-const imagePreview = ref<string | null>(null);
+const fileInputRef  = ref<HTMLInputElement | null>(null);
+const imagePreview  = ref<string | null>(null);
+const imageSizeError = ref(false);
 let rawFile: File | null = null;
+
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 
 const handleFileSelect = (e: Event) => {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
+    if (file.size > MAX_IMAGE_BYTES) {
+        imageSizeError.value = true;
+        rawFile = null;
+        imagePreview.value = null;
+        if (fileInputRef.value) fileInputRef.value.value = '';
+        return;
+    }
+    imageSizeError.value = false;
     rawFile = file;
     imagePreview.value = URL.createObjectURL(file);
 };
 
 const clearImage = () => {
     rawFile = null;
+    imageSizeError.value = false;
     imagePreview.value = null;
     if (fileInputRef.value) fileInputRef.value.value = '';
 };
@@ -46,13 +58,7 @@ const submitForm = () => {
     fd.append('muscle_group', form.muscle_group);
     fd.append('equipment', form.equipment);
     fd.append('type', form.type);
-    if (rawFile) {
-        fd.append('image', rawFile, rawFile.name);
-        console.log('[submit] appended image:', rawFile.name, rawFile.size, rawFile.type);
-    } else {
-        console.log('[submit] no rawFile');
-    }
-    console.log('[submit] FormData entries:', [...fd.keys()]);
+    if (rawFile) fd.append('image', rawFile, rawFile.name);
 
     router.post(route('exercises.store'), fd, {
         onSuccess: () => { form.reset(); rawFile = null; imagePreview.value = null; },
@@ -171,7 +177,7 @@ const submitForm = () => {
                             <h2>Bilde</h2>
 
                             <div class="form-group">
-                                <label>Attēls (JPG, PNG, WebP — max 4 MB)</label>
+                                <label>Attēls (JPG, PNG, WebP — max 2 MB)</label>
                                 <div class="file-upload-area" :class="{ 'has-image': imagePreview }"
                                      @click="fileInputRef?.click()">
                                     <img v-if="imagePreview" :src="imagePreview" class="upload-preview" alt="Priekšskatījums" />
@@ -186,12 +192,13 @@ const submitForm = () => {
                                 </div>
                                 <input ref="fileInputRef" type="file" accept="image/*"
                                        class="hidden-file-input" @change="handleFileSelect" />
-                                <p v-if="form.errors.image" class="err">{{ form.errors.image }}</p>
+                                <p v-if="imageSizeError" class="err">Attēls pārsniedz 2 MB limitu.</p>
+                                <p v-else-if="form.errors.image" class="err">{{ form.errors.image }}</p>
                             </div>
                         </section>
 
                         <div class="form-actions">
-                            <button type="submit" class="btn btn--primary" :disabled="form.processing">
+                            <button type="submit" class="btn btn--primary" :disabled="form.processing || imageSizeError">
                                 <span v-if="form.processing">Saglabā...</span>
                                 <span v-else>💾 Pievienot vingrinājumu</span>
                             </button>
