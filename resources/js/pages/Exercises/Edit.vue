@@ -5,7 +5,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import Modal from '@/components/Modal.vue';
 import { useModal } from '@/composables/useModal';
 import { Head, Link, useForm, router } from '@inertiajs/vue3';
-import { ref, markRaw } from 'vue';
+import { ref } from 'vue';
 
 const { modalRef, confirm } = useModal();
 
@@ -17,14 +17,11 @@ const props = defineProps<{
 }>();
 
 const form = useForm({
-    _method:      'PUT',
     name:         props.exercise.name,
     description:  props.exercise.description  || '',
     muscle_group: props.exercise.muscle_group || '',
     equipment:    props.exercise.equipment    || '',
     type:         props.exercise.type         || 'strength',
-    image:        null as File | null,
-    remove_image: false,
 });
 
 const customMuscleGroup = ref(!props.muscleGroups.includes(props.exercise.muscle_group));
@@ -32,26 +29,41 @@ const customEquipment   = ref(!props.equipmentOptions.includes(props.exercise.eq
 
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const imagePreview = ref<string | null>(props.exercise.image_url || null);
+let rawFile: File | null = null;
+let removeImage = false;
 
 const handleFileSelect = (e: Event) => {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
-    form.image = markRaw(file);
-    form.remove_image = false;
+    rawFile = file;
+    removeImage = false;
     imagePreview.value = URL.createObjectURL(file);
 };
 
 const clearImage = () => {
-    form.image = null;
-    form.remove_image = true;
+    rawFile = null;
+    removeImage = true;
     imagePreview.value = null;
     if (fileInputRef.value) fileInputRef.value.value = '';
 };
 
 const submitForm = () => {
-    form.post(route('exercises.update', { exercise: props.exercise.id }), {
-        preserveScroll: true,
-    });
+    form
+        .transform((data) => {
+            const fd = new FormData();
+            fd.append('_method', 'PUT');
+            fd.append('name', data.name);
+            fd.append('description', data.description || '');
+            fd.append('muscle_group', data.muscle_group);
+            fd.append('equipment', data.equipment);
+            fd.append('type', data.type);
+            if (rawFile) fd.append('image', rawFile);
+            if (removeImage) fd.append('remove_image', '1');
+            return fd;
+        })
+        .post(route('exercises.update', { exercise: props.exercise.id }), {
+            preserveScroll: true,
+        });
 };
 
 // Dzēš ar apstiprinājumu

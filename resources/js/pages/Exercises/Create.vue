@@ -3,7 +3,7 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import { ref, markRaw } from 'vue';
+import { ref } from 'vue';
 
 const props = defineProps<{
     muscleGroups:     string[];
@@ -17,32 +17,43 @@ const form = useForm({
     muscle_group: '',
     equipment:    '',
     type:         'strength',
-    image:        null as File | null,
 });
 
 const customMuscleGroup = ref(false);
 const customEquipment   = ref(false);
 
-const fileInputRef   = ref<HTMLInputElement | null>(null);
-const imagePreview   = ref<string | null>(null);
+const fileInputRef = ref<HTMLInputElement | null>(null);
+const imagePreview = ref<string | null>(null);
+let rawFile: File | null = null;
 
 const handleFileSelect = (e: Event) => {
     const file = (e.target as HTMLInputElement).files?.[0];
     if (!file) return;
-    form.image = markRaw(file);
+    rawFile = file;
     imagePreview.value = URL.createObjectURL(file);
 };
 
 const clearImage = () => {
-    form.image = null;
+    rawFile = null;
     imagePreview.value = null;
     if (fileInputRef.value) fileInputRef.value.value = '';
 };
 
 const submitForm = () => {
-    form.post(route('exercises.store'), {
-        onSuccess: () => { form.reset(); imagePreview.value = null; },
-    });
+    form
+        .transform((data) => {
+            const fd = new FormData();
+            fd.append('name', data.name);
+            fd.append('description', data.description || '');
+            fd.append('muscle_group', data.muscle_group);
+            fd.append('equipment', data.equipment);
+            fd.append('type', data.type);
+            if (rawFile) fd.append('image', rawFile);
+            return fd;
+        })
+        .post(route('exercises.store'), {
+            onSuccess: () => { form.reset(); rawFile = null; imagePreview.value = null; },
+        });
 };
 </script>
 
